@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Kumi</title>
+    <!-- The splash is plain HTML/CSS so it paints before the app bundle loads. App.tsx dismisses it. -->
+    <style>
+      #splash {
+        --bg: #f7f2e9;
+        --stem: #1a2240;
+        --up: #d8921c;
+        --down: #2e9c9c;
+        --hub: #e9553f;
+        --text: #1a2240;
+        --muted: #5b6180;
+        position: fixed;
+        inset: 0;
+        z-index: 100;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 18px;
+        background: var(--bg);
+        font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+        -webkit-app-region: drag;
+        transition: opacity 360ms ease, transform 360ms ease;
+      }
+      @media (prefers-color-scheme: dark) {
+        #splash {
+          --bg: #14161c;
+          --stem: #f4eee3;
+          --up: #f2b33d;
+          --down: #4fbfbf;
+          --text: #f4eee3;
+          --muted: #9ca0b3;
+        }
+      }
+      #splash.splash-out {
+        opacity: 0;
+        transform: scale(1.03);
+        pointer-events: none;
+      }
+      #splash svg {
+        width: 132px;
+        height: 132px;
+        overflow: visible;
+      }
+      #splash line {
+        stroke-width: 112;
+        stroke-linecap: round;
+        stroke-dasharray: 1;
+        stroke-dashoffset: 1;
+        opacity: 0;
+        animation: splash-draw 520ms cubic-bezier(0.65, 0, 0.35, 1) forwards;
+      }
+      #splash .stem { stroke: var(--stem); }
+      #splash .up { stroke: var(--up); animation-delay: 220ms; }
+      #splash .down { stroke: var(--down); animation-delay: 380ms; }
+      #splash circle {
+        fill: var(--hub);
+        transform-origin: 454px 512px;
+        transform: scale(0);
+        animation:
+          splash-pop 420ms cubic-bezier(0.34, 1.56, 0.64, 1) 760ms forwards,
+          splash-pulse 1400ms ease-in-out 1300ms infinite;
+      }
+      #splash .word {
+        color: var(--text);
+        font-size: 22px;
+        font-weight: 600;
+        letter-spacing: -0.01em;
+        opacity: 0;
+        animation: splash-fade 500ms ease 700ms forwards;
+      }
+      #splash .word span {
+        margin-left: 6px;
+        color: var(--hub);
+        font-weight: 400;
+      }
+      #splash .tagline {
+        margin-top: -10px;
+        color: var(--muted);
+        font-size: 13px;
+        opacity: 0;
+        animation: splash-fade 500ms ease 900ms forwards;
+      }
+      @keyframes splash-draw {
+        from { opacity: 1; stroke-dashoffset: 1; }
+        to { opacity: 1; stroke-dashoffset: 0; }
+      }
+      @keyframes splash-pop {
+        to { transform: scale(1); }
+      }
+      @keyframes splash-pulse {
+        0%, 100% { transform: scale(1); }
+        50% { transform: scale(1.25); }
+      }
+      @keyframes splash-fade {
+        from { opacity: 0; transform: translateY(4px); }
+        to { opacity: 1; transform: none; }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        #splash line, #splash circle, #splash .word, #splash .tagline {
+          animation: none;
+          opacity: 1;
+          stroke-dashoffset: 0;
+          transform: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="splash" role="status" aria-label="Kumi is starting">
+      <svg viewBox="0 0 1024 1024" aria-hidden="true">
+        <line class="stem" x1="318" y1="256" x2="318" y2="768" pathLength="1" />
+        <line class="up" x1="549.4" y1="415.1" x2="706" y2="256" pathLength="1" />
+        <line class="down" x1="549.4" y1="608.9" x2="706" y2="768" pathLength="1" />
+        <circle cx="454" cy="512" r="56" />
+      </svg>
+      <div class="word">Kumi<span>組</span></div>
+      <div class="tagline">Assembling your MCP servers…</div>
+    </div>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

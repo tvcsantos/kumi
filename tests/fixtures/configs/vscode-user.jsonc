@@ -1,0 +1,13 @@
+{
+	// My MCP servers
+	"servers": {
+		"memory": {
+			"type": "stdio",
+			"command": "npx",
+			"args": ["-y", "@modelcontextprotocol/server-memory"]
+		}
+	},
+	"inputs": [
+		{ "type": "promptString", "id": "my-key", "password": true }
+	]
+}

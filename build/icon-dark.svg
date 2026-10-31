@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024" role="img" aria-label="Kumi">
+  <rect width="1024" height="1024" rx="228" fill="#14161C"/>
+  <g stroke="#F4EEE3" stroke-width="112" stroke-linecap="round">
+    <line x1="318" y1="256" x2="318" y2="768"/>
+    <line x1="549.4" y1="415.1" x2="706" y2="256"/>
+    <line x1="549.4" y1="608.9" x2="706" y2="768"/>
+  </g>
+  <circle cx="454" cy="512" r="56" fill="#E9553F"/>
+</svg>

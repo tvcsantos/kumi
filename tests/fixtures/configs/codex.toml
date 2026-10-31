@@ -1,0 +1,14 @@
+# Codex config
+model = "gpt-5"
+approval_policy = "on-request"
+
+[mcp_servers.existing]
+command = "node"
+args = ["server.js"]
+
+[mcp_servers.existing.env]
+TOKEN = "abc"
+
+# Profiles below
+[profiles.fast]
+model = "gpt-5-mini"

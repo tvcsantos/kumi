@@ -1,0 +1,17 @@
+{
+  "numStartups": 42,
+  "theme": "dark",
+  "projects": {
+    "/Users/me/app": {
+      "allowedTools": [],
+      "mcpServers": {}
+    }
+  },
+  "mcpServers": {
+    "existing": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["server.js"]
+    }
+  }
+}
