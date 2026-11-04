@@ -113,3 +113,7 @@ tests/           Vitest suites with real-world config and registry fixtures
 ```
 
 See [PLAN.md](PLAN.md) for the design and roadmap.
+
+## License
+
+[MIT](LICENSE)
