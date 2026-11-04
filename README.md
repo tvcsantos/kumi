@@ -11,6 +11,66 @@ A desktop MCP marketplace. Browse MCP servers from the official [MCP Registry](h
 | OpenAI Codex | global | `~/.codex/config.toml` (honors `CODEX_HOME`) |
 | GitHub Copilot CLI | global | `~/.copilot/mcp-config.json` |
 
+## Showcase
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/discover-dark.png">
+  <img alt="Discover: featured servers from the MCP Registry" src="docs/screenshots/discover.png">
+</picture>
+
+<table>
+  <tr>
+    <td width="50%">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/server-detail-dark.png">
+        <img alt="Server detail with the ways to run it" src="docs/screenshots/server-detail.png">
+      </picture>
+      <p align="center"><b>Server detail</b>: every way to run a server and the settings it needs.</p>
+    </td>
+    <td width="50%">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/install-configure-dark.png">
+        <img alt="Install wizard: configure step" src="docs/screenshots/install-configure.png">
+      </picture>
+      <p align="center"><b>Configure</b>: a form generated from <code>server.json</code>, with secrets masked.</p>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/install-targets-dark.png">
+        <img alt="Install wizard: choose apps and scopes" src="docs/screenshots/install-targets.png">
+      </picture>
+      <p align="center"><b>Choose apps</b>: install into several apps at once, per scope.</p>
+    </td>
+    <td width="50%">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/install-review-dark.png">
+        <img alt="Install wizard: per-file diff preview" src="docs/screenshots/install-review.png">
+      </picture>
+      <p align="center"><b>Review</b>: the exact edit to each config file before anything is written.</p>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/installed-dark.png">
+        <img alt="Installed servers across all apps" src="docs/screenshots/installed.png">
+      </picture>
+      <p align="center"><b>Installed</b>: every server in every app, including ones added by hand.</p>
+    </td>
+    <td width="50%">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/settings-dark.png">
+        <img alt="Settings: registry, secrets and detected apps" src="docs/screenshots/settings.png">
+      </picture>
+      <p align="center"><b>Settings</b>: registry, secrets default, and where each app keeps its config.</p>
+    </td>
+  </tr>
+</table>
+
+Screenshots follow your GitHub theme (light or dark).
+
 ## Features
 
 - **Catalog**: search the registry; featured servers; offline cache.
