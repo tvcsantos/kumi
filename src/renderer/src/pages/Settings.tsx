@@ -1,10 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { CheckCircle2, CircleDashed, FileCode, FolderSearch, History } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { CheckCircle2, CircleDashed, FileCode, FileJson, FolderSearch, Globe, History, Lock, Pencil, Plus, Trash2 } from 'lucide-react';
+import { useState } from 'react';
+import type { RegistryInfo } from '@shared/registry';
 import type { SecretsMode } from '@shared/types';
 import { ClientMark } from '../components/bits';
-import { Badge, Button, Input, PageHeader, Select, Spinner } from '../components/ui';
+import { RegistryDialog } from '../components/RegistryDialog';
+import { Badge, Button, PageHeader, Select, Spinner } from '../components/ui';
 import { api, errorMessage } from '../lib/api';
+import { useRegistries } from '../lib/hooks';
 
 function Section({ title, description, children }: { title: string; description?: string; children: React.ReactNode }) {
   return (
@@ -16,25 +19,96 @@ function Section({ title, description, children }: { title: string; description?
   );
 }
 
+function Registries() {
+  const queryClient = useQueryClient();
+  const registries = useRegistries();
+  const [dialog, setDialog] = useState<{ registry?: RegistryInfo } | null>(null);
+  const refresh = () => {
+    for (const key of ['registries', 'catalog', 'server']) void queryClient.invalidateQueries({ queryKey: [key] });
+  };
+  const toggle = useMutation({
+    mutationFn: ({ id, enabled }: { id: string; enabled: boolean }) => api.registriesUpdate(id, { enabled }),
+    // Flip the checkbox right away; the refetch puts it back if saving failed.
+    onMutate: ({ id, enabled }) => queryClient.setQueryData<RegistryInfo[]>(['registries'], (list) => list?.map((r) => (r.id === id ? { ...r, enabled } : r))),
+    onSettled: refresh,
+  });
+  const remove = useMutation({ mutationFn: api.registriesRemove, onSuccess: refresh });
+
+  return (
+    <Section title="Registries" description="Where Kumi looks for MCP servers. Discover searches every registry that's turned on.">
+      {registries.isLoading && <Spinner />}
+      <ul className="divide-y divide-line">
+        {registries.data?.map((r) => (
+          <li key={r.id} className="flex items-center gap-3 py-2.5">
+            {r.kind === 'api' ? <Globe className="size-4 shrink-0 text-muted" /> : <FileJson className="size-4 shrink-0 text-muted" />}
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2">
+                <span className="truncate font-medium">{r.name}</span>
+                {r.builtIn && <Badge tone="accent">built in</Badge>}
+                {r.kind === 'file' && <Badge>file</Badge>}
+                {r.hasToken && (
+                  <Badge title="Uses a saved token">
+                    <Lock className="size-3" /> token
+                  </Badge>
+                )}
+              </div>
+              <div className="truncate font-mono text-[11px] text-muted" title={r.location}>
+                {r.location}
+              </div>
+            </div>
+            <label className="flex shrink-0 items-center gap-1.5 text-xs text-muted">
+              <input
+                type="checkbox"
+                className="size-4 accent-accent"
+                checked={r.enabled}
+                disabled={toggle.isPending}
+                onChange={(e) => toggle.mutate({ id: r.id, enabled: e.target.checked })}
+              />
+              On
+            </label>
+            {!r.builtIn && (
+              <>
+                <Button size="sm" variant="ghost" icon={<Pencil className="size-3.5" />} onClick={() => setDialog({ registry: r })}>
+                  Edit
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  icon={<Trash2 className="size-3.5" />}
+                  loading={remove.isPending && remove.variables === r.id}
+                  onClick={() =>
+                    window.confirm(`Remove "${r.name}"? Servers you installed from it stay installed, but you won't be able to edit them with a form until you add it again.`) &&
+                    remove.mutate(r.id)
+                  }
+                >
+                  Remove
+                </Button>
+              </>
+            )}
+          </li>
+        ))}
+      </ul>
+      <div className="mt-3">
+        <Button icon={<Plus className="size-4" />} onClick={() => setDialog({})}>
+          Add registry
+        </Button>
+      </div>
+      {(toggle.error || remove.error) && <p className="mt-2 text-xs text-danger">{errorMessage(toggle.error ?? remove.error)}</p>}
+      {dialog && <RegistryDialog registry={dialog.registry} onClose={() => setDialog(null)} />}
+    </Section>
+  );
+}
+
 export function Settings() {
   const queryClient = useQueryClient();
   const settings = useQuery({ queryKey: ['settings'], queryFn: api.settingsGet });
   const clients = useQuery({ queryKey: ['clients'], queryFn: api.clientsList });
   const runtimes = useQuery({ queryKey: ['runtimes'], queryFn: api.runtimesCheck });
   const backups = useQuery({ queryKey: ['backups'], queryFn: api.backupsList });
-  const [registryUrl, setRegistryUrl] = useState('');
-
-  useEffect(() => {
-    if (settings.data) setRegistryUrl(settings.data.registryUrl);
-  }, [settings.data]);
 
   const save = useMutation({
     mutationFn: api.settingsSet,
-    onSuccess: (s) => {
-      queryClient.setQueryData(['settings'], s);
-      void queryClient.invalidateQueries({ queryKey: ['catalog'] });
-      void queryClient.invalidateQueries({ queryKey: ['server'] });
-    },
+    onSuccess: (s) => queryClient.setQueryData(['settings'], s),
   });
   const restore = useMutation({
     mutationFn: api.backupsRestore,
@@ -48,15 +122,7 @@ export function Settings() {
     <div className="space-y-5">
       <PageHeader title="Settings" />
 
-      <Section title="Registry" description="Where Kumi looks for MCP servers. Any registry that implements the MCP Registry API works.">
-        <div className="flex gap-2">
-          <Input value={registryUrl} onChange={(e) => setRegistryUrl(e.target.value)} className="font-mono" />
-          <Button variant="primary" loading={save.isPending} disabled={registryUrl === settings.data?.registryUrl} onClick={() => save.mutate({ registryUrl })}>
-            Save
-          </Button>
-        </div>
-        {save.error && <p className="mt-2 text-xs text-danger">{errorMessage(save.error)}</p>}
-      </Section>
+      <Registries />
 
       <Section title="Secrets" description="Default for new installs. You can change it per install.">
         <Select
@@ -67,6 +133,7 @@ export function Settings() {
           <option value="inline">Write secrets into config files (works everywhere)</option>
           <option value="client-native">Use the app's secure storage where available (VS Code)</option>
         </Select>
+        {save.error && <p className="mt-2 text-xs text-danger">{errorMessage(save.error)}</p>}
       </Section>
 
       <Section title="Apps" description="Where each app keeps its MCP configuration on this machine.">

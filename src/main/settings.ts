@@ -1,9 +1,8 @@
 import { join } from 'node:path';
 import type { Settings } from '@shared/api';
 import { atomicWrite, readTextOrNull } from './config-io/fs';
-import { DEFAULT_REGISTRY_URL } from './catalog/registry';
 
-const DEFAULTS: Settings = { registryUrl: DEFAULT_REGISTRY_URL, defaultSecretsMode: 'inline' };
+const DEFAULTS: Settings = { defaultSecretsMode: 'inline' };
 
 export class SettingsStore {
   private readonly path: string;

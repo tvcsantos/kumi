@@ -1,6 +1,6 @@
 // The renderer ↔ main contract. The preload script exposes exactly this as `window.kumi`.
 
-import type { CatalogPage, RegistryServer } from './registry';
+import type { CatalogPage, RegistryDraft, RegistryInfo, RegistryPatch, RegistryServer } from './registry';
 import type {
   ApplyResult,
   BackupInfo,
@@ -17,7 +17,6 @@ import type {
 } from './types';
 
 export interface Settings {
-  registryUrl: string;
   defaultSecretsMode: SecretsMode;
 }
 
@@ -38,8 +37,14 @@ export interface UninstallTarget {
 
 export interface KumiApi {
   appInfo(): Promise<AppInfo>;
-  catalogSearch(query: string, cursor?: string): Promise<CatalogPage>;
-  catalogGet(name: string, version?: string): Promise<RegistryServer>;
+  /** Searches one registry, or every enabled one when `registryId` is omitted. */
+  catalogSearch(query: string, cursor?: string, registryId?: string): Promise<CatalogPage>;
+  catalogGet(registryId: string, name: string, version?: string): Promise<RegistryServer>;
+  registriesList(): Promise<RegistryInfo[]>;
+  /** Checks the registry answers, then saves it. */
+  registriesAdd(draft: RegistryDraft): Promise<RegistryInfo>;
+  registriesUpdate(id: string, patch: RegistryPatch): Promise<RegistryInfo>;
+  registriesRemove(id: string): Promise<void>;
   clientsList(): Promise<ClientInfo[]>;
   runtimesCheck(): Promise<RuntimeStatus[]>;
   installPlan(request: InstallRequest): Promise<InstallPlan>;
@@ -66,6 +71,10 @@ export const API_METHODS = [
   'appInfo',
   'catalogSearch',
   'catalogGet',
+  'registriesList',
+  'registriesAdd',
+  'registriesUpdate',
+  'registriesRemove',
   'clientsList',
   'runtimesCheck',
   'installPlan',

@@ -52,6 +52,8 @@ export interface InstallTarget {
 }
 
 export interface InstallSource {
+  /** Which configured registry the server came from. */
+  registryId: string;
   registryName: string;
   version: string;
   variant: VariantRef;

@@ -24,6 +24,7 @@ import { Badge, Button, Callout, Input, Modal, Spinner, cx } from './ui';
 export type WizardSource =
   | {
       kind: 'registry';
+      registryId: string;
       server: RegistryServer;
       /** Present when editing an existing install. */
       edit?: { name: string; variantRef: { kind: 'package' | 'remote'; index: number }; values: FormValues; targets: InstallTarget[]; secretsMode: SecretsMode };
@@ -179,7 +180,7 @@ export function InstallWizard({ source, onClose, onViewInstalled }: { source: Wi
       overwriteForeign: overwriteForeign || undefined,
       ...(source.kind === 'registry' && variant
         ? {
-            source: { registryName: source.server.name, version: source.server.version, variant: variant.ref },
+            source: { registryId: source.registryId, registryName: source.server.name, version: source.server.version, variant: variant.ref },
             values,
             secretValueKeys: secretKeys,
           }

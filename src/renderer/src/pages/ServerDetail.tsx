@@ -1,17 +1,19 @@
 import { useQuery } from '@tanstack/react-query';
-import { ArrowLeft, Code2, Download, ExternalLink, KeyRound, Lock } from 'lucide-react';
-import type { RegistryServer } from '@shared/registry';
+import { ArrowLeft, Code2, Download, ExternalLink, KeyRound, Library, Lock } from 'lucide-react';
+import type { CatalogItem, RegistryServer } from '@shared/registry';
 import { getVariants } from '@shared/variants';
 import { ClientMark, displayName, scopeLabel, ServerIcon } from '../components/bits';
 import { Badge, Button, Callout, Spinner } from '../components/ui';
 import { api, errorMessage } from '../lib/api';
-import { useInstalledByServer } from '../lib/hooks';
+import { useInstalledByServer, useRegistry } from '../lib/hooks';
 
-export function ServerDetail({ initial, onBack, onInstall }: { initial: RegistryServer; onBack: () => void; onInstall: (server: RegistryServer) => void }) {
-  const full = useQuery({ queryKey: ['server', initial.name], queryFn: () => api.catalogGet(initial.name) });
-  const server = full.data ?? initial;
+export function ServerDetail({ initial, onBack, onInstall }: { initial: CatalogItem; onBack: () => void; onInstall: (server: RegistryServer) => void }) {
+  const { registryId } = initial;
+  const full = useQuery({ queryKey: ['server', registryId, initial.server.name], queryFn: () => api.catalogGet(registryId, initial.server.name) });
+  const server = full.data ?? initial.server;
+  const registry = useRegistry(registryId);
   const variants = getVariants(server);
-  const installed = useInstalledByServer(server.name);
+  const installed = useInstalledByServer(registryId, server.name);
   const installable = variants.some((v) => !v.unsupported);
 
   return (
@@ -27,6 +29,11 @@ export function ServerDetail({ initial, onBack, onInstall }: { initial: Registry
           <div className="mt-0.5 font-mono text-xs text-muted">
             {server.name} · v{server.version}
           </div>
+          {registry && (
+            <div className="mt-1 flex items-center gap-1 text-xs text-muted">
+              <Library className="size-3.5" /> From {registry.name}
+            </div>
+          )}
           <div className="mt-3 flex flex-wrap gap-2">
             {server.repository?.url && (
               <Button size="sm" icon={<Code2 className="size-3.5" />} onClick={() => api.openExternal(server.repository!.url!)}>

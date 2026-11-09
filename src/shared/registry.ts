@@ -66,9 +66,46 @@ export interface RegistryServerResponse {
   _meta?: Record<string, unknown>;
 }
 
+/** Id of the built-in official MCP Registry. Install records without a registry id came from it. */
+export const OFFICIAL_REGISTRY_ID = 'official';
+
+/** `api` speaks the MCP Registry API; `file` is one static JSON file listing servers. */
+export type RegistryKind = 'api' | 'file';
+
+/** A configured source of servers, as the renderer sees it (tokens never leave the main process). */
+export interface RegistryInfo {
+  id: string;
+  name: string;
+  kind: RegistryKind;
+  /** API base URL, or the URL or absolute path of a static file. */
+  location: string;
+  enabled: boolean;
+  /** The official registry: can be disabled, but not edited or removed. */
+  builtIn: boolean;
+  hasToken: boolean;
+}
+
+export interface RegistryDraft {
+  name: string;
+  kind: RegistryKind;
+  location: string;
+  /** Bearer token. On update: omit to keep the current one, null to remove it. */
+  token?: string | null;
+}
+
+export type RegistryPatch = Partial<RegistryDraft> & { enabled?: boolean };
+
+/** A server together with the registry it came from. */
+export interface CatalogItem {
+  registryId: string;
+  server: RegistryServer;
+}
+
 export interface CatalogPage {
-  servers: RegistryServer[];
+  items: CatalogItem[];
   nextCursor?: string;
+  /** Registries that couldn't be searched; their servers are missing from this page. */
+  failures?: { registryId: string; error: string }[];
 }
 
 /** One form field generated from registry metadata. */

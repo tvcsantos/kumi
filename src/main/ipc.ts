@@ -5,7 +5,7 @@ import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron';
 import { z } from 'zod';
 import { API_METHODS, channel, type IpcResult, type KumiApi } from '@shared/api';
 import { CLIENT_IDS, type ClientInfo } from '@shared/types';
-import type { RegistryClient } from './catalog/registry';
+import type { Catalog } from './catalog/catalog';
 import { ADAPTERS } from './clients';
 import type { HostEnv } from './clients/types';
 import { testServer } from './health/check';
@@ -31,6 +31,7 @@ const serverSpec = z.object({
   secretHeaders: z.array(z.string()).optional(),
   secretArgs: z.array(z.number().int().nonnegative()).optional(),
 }).refine((s) => (s.transport === 'stdio' ? !!s.command : !!s.url), 'stdio servers need a command; remote servers need a URL');
+const registryId = z.string().min(1).max(100);
 const variantRef = z.union([
   z.object({ kind: z.literal('package'), index: z.number().int().nonnegative() }),
   z.object({ kind: z.literal('remote'), index: z.number().int().nonnegative() }),
@@ -40,21 +41,27 @@ const installRequest = z.object({
   spec: serverSpec,
   targets: z.array(z.object({ clientId, scope })).min(1),
   secretsMode: z.enum(['inline', 'client-native']),
-  source: z.object({ registryName: z.string(), version: z.string(), variant: variantRef }).optional(),
+  source: z.object({ registryId, registryName: z.string(), version: z.string(), variant: variantRef }).optional(),
   values: stringMap.optional(),
   secretValueKeys: z.array(z.string()).optional(),
   overwriteForeign: z.boolean().optional(),
 });
 const uninstallTarget = z.object({ clientId, scope, name: z.string().min(1) });
 const settingsPatch = z.object({
-  registryUrl: z.url({ protocol: /^https?$/ }).optional(),
   defaultSecretsMode: z.enum(['inline', 'client-native']).optional(),
 });
+const registryDraft = z.object({
+  name: z.string().trim().min(1, 'Give the registry a name').max(60),
+  kind: z.enum(['api', 'file']),
+  location: z.string().trim().min(1, 'Enter a URL or file path').max(2000),
+  token: z.string().max(4000).nullable().optional(),
+});
+const registryPatch = registryDraft.partial().extend({ enabled: z.boolean().optional() });
 
 export interface Services {
   env: HostEnv;
   dataDir: string;
-  registry: RegistryClient;
+  catalog: Catalog;
   installer: InstallService;
   state: StateStore;
   backups: BackupService;
@@ -89,8 +96,13 @@ function createHandlers(s: Services): Handlers {
       platform: `${process.platform} ${process.arch}`,
       dataDir: s.dataDir,
     }),
-    catalogSearch: (q, cursor) => s.registry.search(z.string().max(200).parse(q), z.string().max(500).optional().parse(cursor)),
-    catalogGet: (name, version) => s.registry.get(z.string().min(1).max(300).parse(name), z.string().max(100).optional().parse(version)),
+    catalogSearch: (q, cursor, id) =>
+      s.catalog.search(z.string().max(200).parse(q), z.string().max(8000).optional().parse(cursor), registryId.optional().parse(id)),
+    catalogGet: (id, name, version) => s.catalog.get(registryId.parse(id), z.string().min(1).max(300).parse(name), z.string().max(100).optional().parse(version)),
+    registriesList: () => s.catalog.list(),
+    registriesAdd: (draft) => s.catalog.add(registryDraft.parse(draft)),
+    registriesUpdate: (id, patch) => s.catalog.update(registryId.parse(id), registryPatch.parse(patch)),
+    registriesRemove: (id) => s.catalog.remove(registryId.parse(id)),
     clientsList: async () =>
       Promise.all(
         ADAPTERS.map(
@@ -139,11 +151,7 @@ function createHandlers(s: Services): Handlers {
       await shell.openExternal(z.url({ protocol: /^https?$/ }).parse(url));
     },
     settingsGet: () => s.settings.get(),
-    settingsSet: async (patch) => {
-      const next = await s.settings.set(settingsPatch.parse(patch));
-      s.registry.setBaseUrl(next.registryUrl);
-      return next;
-    },
+    settingsSet: (patch) => s.settings.set(settingsPatch.parse(patch)),
   };
 }
 

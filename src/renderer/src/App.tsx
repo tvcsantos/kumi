@@ -1,6 +1,6 @@
 import { Compass, Info, Layers, Settings as SettingsIcon } from 'lucide-react';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import type { RegistryServer } from '@shared/registry';
+import type { CatalogItem } from '@shared/registry';
 import { AppIcon } from './components/bits';
 import { InstallWizard, type WizardSource } from './components/InstallWizard';
 import { cx } from './components/ui';
@@ -12,7 +12,7 @@ import { Installed } from './pages/Installed';
 import { ServerDetail } from './pages/ServerDetail';
 import { Settings } from './pages/Settings';
 
-type Route = { page: 'discover' } | { page: 'server'; server: RegistryServer } | { page: 'installed' } | { page: 'settings' } | { page: 'about' };
+type Route = { page: 'discover' } | { page: 'server'; item: CatalogItem } | { page: 'installed' } | { page: 'settings' } | { page: 'about' };
 
 function NavItem({ active, icon, label, badge, onClick }: { active: boolean; icon: ReactNode; label: string; badge?: number; onClick: () => void }) {
   return (
@@ -77,10 +77,14 @@ export function App() {
         <div className="mx-auto max-w-6xl px-8 pb-12">
           {/* Keep Discover mounted so search results and scroll survive opening a server. */}
           <div hidden={route.page !== 'discover'}>
-            <Discover onOpen={(server) => go({ page: 'server', server })} />
+            <Discover onOpen={(item) => go({ page: 'server', item })} />
           </div>
           {route.page === 'server' && (
-            <ServerDetail initial={route.server} onBack={() => go({ page: 'discover' })} onInstall={(server) => setWizard({ kind: 'registry', server })} />
+            <ServerDetail
+              initial={route.item}
+              onBack={() => go({ page: 'discover' })}
+              onInstall={(server) => setWizard({ kind: 'registry', registryId: route.item.registryId, server })}
+            />
           )}
           {route.page === 'installed' && <Installed onEdit={setWizard} onAddCustom={() => setWizard({ kind: 'custom' })} />}
           {route.page === 'settings' && <Settings />}

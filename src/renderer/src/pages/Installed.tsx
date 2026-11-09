@@ -6,7 +6,8 @@ import { ClientMark, scopeLabel } from '../components/bits';
 import { HealthPanel, type WizardSource } from '../components/InstallWizard';
 import { Badge, Button, Callout, Empty, PageHeader, Spinner } from '../components/ui';
 import { api, errorMessage } from '../lib/api';
-import { useInstalled } from '../lib/hooks';
+import { OFFICIAL_REGISTRY_ID } from '@shared/registry';
+import { useInstalled, useRegistries } from '../lib/hooks';
 
 interface Group {
   name: string;
@@ -36,7 +37,9 @@ function GroupRow({ group, onEdit }: { group: Group; onEdit: (source: WizardSour
   const [error, setError] = useState<string | null>(null);
   const rep = representative(group.entries);
   const managed = group.entries.filter((e) => e.record);
-  const registryName = managed.find((e) => e.record?.source)?.record?.source?.registryName;
+  const source = managed.find((e) => e.record?.source)?.record?.source;
+  const registries = useRegistries();
+  const fromRegistry = source && source.registryId !== OFFICIAL_REGISTRY_ID ? registries.data?.find((r) => r.id === source.registryId) : undefined;
 
   const refresh = () => {
     void queryClient.invalidateQueries({ queryKey: ['installed'] });
@@ -63,9 +66,11 @@ function GroupRow({ group, onEdit }: { group: Group; onEdit: (source: WizardSour
       const targets: InstallTarget[] = group.entries.map((e) => ({ clientId: e.clientId, scope: e.scope }));
       const rec = managed.find((e) => e.record?.source?.variant.kind !== 'custom' && e.record?.source)?.record;
       if (rec?.source && rec.source.variant.kind !== 'custom') {
-        const [server, values] = await Promise.all([api.catalogGet(rec.source.registryName, rec.source.version), api.installedValues(rec.id)]);
+        const { registryId } = rec.source;
+        const [server, values] = await Promise.all([api.catalogGet(registryId, rec.source.registryName, rec.source.version), api.installedValues(rec.id)]);
         onEdit({
           kind: 'registry',
+          registryId,
           server,
           edit: { name: group.name, variantRef: rec.source.variant, values, targets, secretsMode: rec.secretsMode },
         });
@@ -86,7 +91,10 @@ function GroupRow({ group, onEdit }: { group: Group; onEdit: (source: WizardSour
               <span className="font-mono font-semibold">{group.name}</span>
               {managed.length === 0 ? <Badge>added manually</Badge> : managed.length < group.entries.length ? <Badge tone="warn">partly managed</Badge> : null}
             </div>
-            <div className="truncate font-mono text-[11px] text-muted">{registryName ?? describeSpec(rep.spec)}</div>
+            <div className="truncate font-mono text-[11px] text-muted">
+              {source?.registryName ?? describeSpec(rep.spec)}
+              {fromRegistry && <span className="font-sans"> · {fromRegistry.name}</span>}
+            </div>
           </div>
         </button>
         <div className="flex shrink-0 -space-x-1">

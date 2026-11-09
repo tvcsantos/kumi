@@ -1,6 +1,8 @@
 import { join } from 'node:path';
 import { app, BrowserWindow, nativeTheme, session, shell } from 'electron';
-import { RegistryClient } from './catalog/registry';
+import { Catalog } from './catalog/catalog';
+import { HttpCache } from './catalog/http';
+import { RegistryStore } from './catalog/sources';
 import { createHostEnv, loadShellEnv } from './host';
 import { InstallService } from './install/service';
 import { registerIpc, type Services } from './ipc';
@@ -67,9 +69,10 @@ async function startServices(): Promise<Services> {
   const settings = new SettingsStore(dataDir);
   const state = new StateStore(dataDir);
   const backups = new BackupService(dataDir);
-  const registry = new RegistryClient(dataDir, (await settings.get()).registryUrl);
-  const installer = new InstallService(env, state, backups, await createSafeStorageBox());
-  return { env, dataDir, registry, installer, state, backups, settings };
+  const box = await createSafeStorageBox();
+  const catalog = new Catalog(new RegistryStore(dataDir, box), new HttpCache(dataDir));
+  const installer = new InstallService(env, state, backups, box);
+  return { env, dataDir, catalog, installer, state, backups, settings };
 }
 
 app.whenReady().then(() => {

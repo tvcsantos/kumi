@@ -1,94 +1,50 @@
-// Client for the official MCP Registry, with retries and a disk cache so browsing works offline.
+// Client for any registry that implements the MCP Registry API, such as the official one.
 
-import { join } from 'node:path';
-import type { CatalogPage, RegistryServer, RegistryServerResponse } from '@shared/registry';
-import { atomicWrite, readTextOrNull } from '../config-io/fs';
+import type { RegistryServer, RegistryServerResponse } from '@shared/registry';
+import type { HttpCache } from './http';
 
 export const DEFAULT_REGISTRY_URL = 'https://registry.modelcontextprotocol.io/v0.1';
 
-// The registry sometimes takes ~15s to answer; don't abort just before it does.
-const TIMEOUT_MS = 25_000;
-const FRESH_MS = 10 * 60 * 1000;
-const MAX_CACHE_ENTRIES = 500;
-
-interface CacheEntry {
-  at: number;
-  data: unknown;
+export interface SourcePage {
+  servers: RegistryServer[];
+  nextCursor?: string;
 }
 
-type Fetch = typeof fetch;
+/** One source of servers: an API registry or a static file. */
+export interface RegistrySource {
+  search(query: string, cursor?: string, limit?: number): Promise<SourcePage>;
+  get(name: string, version?: string): Promise<RegistryServer>;
+}
 
-function isActive(r: RegistryServerResponse): boolean {
+export function isActive(r: RegistryServerResponse): boolean {
   const meta = r._meta?.['io.modelcontextprotocol.registry/official'] as { status?: string } | undefined;
   return !meta?.status || meta.status === 'active';
 }
 
-export class RegistryClient {
-  private cache: Record<string, CacheEntry> | null = null;
-  private readonly cachePath: string;
+const NOT_FOUND = 'Not found';
+
+type ListResponse ={ servers: RegistryServerResponse[]; metadata?: { nextCursor?: string } };
+
+export class ApiRegistry implements RegistrySource {
+  private readonly baseUrl: string;
 
   constructor(
-    dataDir: string,
-    private baseUrl = DEFAULT_REGISTRY_URL,
-    private readonly fetchImpl: Fetch = fetch,
+    private readonly http: HttpCache,
+    baseUrl: string,
+    private readonly token?: string,
   ) {
-    this.cachePath = join(dataDir, 'cache', 'registry.json');
+    this.baseUrl = baseUrl.replace(/\/+$/, '');
   }
 
-  setBaseUrl(url: string) {
-    this.baseUrl = url.replace(/\/+$/, '');
+  private getJson<T>(path: string): Promise<T> {
+    return this.http.getJson<T>(`${this.baseUrl}${path}`, { token: this.token, notFound: 'Not found in the registry' });
   }
 
-  private async loadCache(): Promise<Record<string, CacheEntry>> {
-    if (!this.cache) {
-      try {
-        this.cache = JSON.parse((await readTextOrNull(this.cachePath)) ?? '{}');
-      } catch {
-        this.cache = {};
-      }
-    }
-    return this.cache!;
-  }
-
-  private async saveCache() {
-    const cache = await this.loadCache();
-    const keys = Object.keys(cache).sort((a, b) => cache[b].at - cache[a].at);
-    for (const k of keys.slice(MAX_CACHE_ENTRIES)) delete cache[k];
-    await atomicWrite(this.cachePath, JSON.stringify(cache)).catch(() => {});
-  }
-
-  /** Fresh cache → network (with retries) → stale cache. */
-  private async getJson<T>(path: string): Promise<T> {
-    const url = `${this.baseUrl}${path}`;
-    const cache = await this.loadCache();
-    const hit = cache[url];
-    if (hit && Date.now() - hit.at < FRESH_MS) return hit.data as T;
-
-    let lastError: unknown;
-    for (let attempt = 0; attempt < 2; attempt++) {
-      try {
-        const res = await this.fetchImpl(url, { signal: AbortSignal.timeout(TIMEOUT_MS), headers: { accept: 'application/json' } });
-        if (res.status === 404) throw Object.assign(new Error('Not found in the registry'), { permanent: true });
-        if (!res.ok) throw new Error(`Registry returned HTTP ${res.status}`);
-        const data = (await res.json()) as T;
-        cache[url] = { at: Date.now(), data };
-        void this.saveCache();
-        return data;
-      } catch (e) {
-        lastError = e;
-        if ((e as { permanent?: boolean }).permanent) break;
-        await new Promise((r) => setTimeout(r, 400 * 2 ** attempt));
-      }
-    }
-    if (hit) return hit.data as T;
-    throw lastError instanceof Error ? lastError : new Error(String(lastError));
-  }
-
-  async search(query: string, cursor?: string, limit = 30): Promise<CatalogPage> {
+  async search(query: string, cursor?: string, limit = 30): Promise<SourcePage> {
     const params = new URLSearchParams({ limit: String(limit), version: 'latest' });
     if (query.trim()) params.set('search', query.trim());
     if (cursor) params.set('cursor', cursor);
-    const page = await this.getJson<{ servers: RegistryServerResponse[]; metadata?: { nextCursor?: string } }>(`/servers?${params}`);
+    const page = await this.getJson<ListResponse>(`/servers?${params}`);
     return {
       servers: page.servers.filter(isActive).map((s) => s.server),
       nextCursor: page.metadata?.nextCursor || undefined,
@@ -98,5 +54,27 @@ export class RegistryClient {
   async get(name: string, version = 'latest'): Promise<RegistryServer> {
     const res = await this.getJson<RegistryServerResponse>(`/servers/${encodeURIComponent(name)}/versions/${encodeURIComponent(version)}`);
     return res.server;
+  }
+
+  /**
+   * Checks that a URL answers like an MCP Registry and returns the base URL to save.
+   * People often paste the bare host, so the versioned paths are tried too.
+   */
+  static async probe(http: HttpCache, url: string, token?: string): Promise<string> {
+    const base = url.replace(/\/+$/, '');
+    const candidates = /\/v\d+(\.\d+)?$/.test(base) ? [base] : [base, `${base}/v0.1`, `${base}/v0`];
+    for (const candidate of candidates) {
+      let page: Partial<ListResponse>;
+      try {
+        page = await http.getJson<Partial<ListResponse>>(`${candidate}/servers?limit=1`, { token, noCache: true, notFound: NOT_FOUND });
+      } catch (e) {
+        // A 404 means "wrong path", so try the next one; anything else won't get better.
+        if (e instanceof Error && e.message === NOT_FOUND) continue;
+        throw e;
+      }
+      if (Array.isArray(page?.servers)) return candidate;
+      throw new Error('The URL answered, but not like an MCP Registry (no "servers" list).');
+    }
+    throw new Error(`No MCP Registry API found at ${base}. Tried ${candidates.map((c) => `${c}/servers`).join(', ')}.`);
   }
 }
