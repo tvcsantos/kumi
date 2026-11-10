@@ -1,0 +1,16 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  // Theme and model
+  "theme": "opencode",
+  "model": "anthropic/claude-sonnet-5-5",
+  "mcp": {
+    "servers": {
+      "existing": {
+        "type": "local",
+        "command": ["uvx", "mcp-server-git"],
+        "environment": { "LOG_LEVEL": "info" },
+        "disabled": false,
+      },
+    },
+  },
+}

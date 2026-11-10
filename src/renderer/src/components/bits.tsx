@@ -13,6 +13,9 @@ const CLIENT_STYLE: Record<ClientId, { short: string; color: string }> = {
   cursor: { short: 'Cu', color: '#555555' },
   codex: { short: 'Cx', color: '#10a37f' },
   'copilot-cli': { short: 'GH', color: '#8957e5' },
+  // OpenCode's brand is near-black, which disappears on the dark theme; a warm gray reads on both.
+  opencode: { short: 'OC', color: '#6f6259' },
+  pi: { short: 'Pi', color: '#3b6fd4' },
 };
 
 /** Kumi's own icon, in the variant that suits the current theme. */

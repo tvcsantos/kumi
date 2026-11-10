@@ -39,6 +39,10 @@ Each client gets an **adapter** that knows where its config lives, its format, a
 | **OpenAI Codex** (CLI / IDE ext) | user | `~/.codex/config.toml` (or `$CODEX_HOME`) | **TOML** | `[mcp_servers.<name>]` | `command`, `args`, `env`, `env_vars` (pass-through), `url`, `bearer_token_env_var`, timeouts. |
 | | (alt) | `codex mcp add <name> -- <cmd>` | CLI | | |
 | **GitHub Copilot CLI** | user | `~/.copilot/mcp-config.json` | JSON | `mcpServers` | Separate from VS Code. |
+| **OpenCode** | user | `~/.config/opencode/opencode.json` (follows `XDG_CONFIG_HOME`) | **JSONC** | `mcp.servers` | `type`: `local` (`command` is one array, env in `environment`) \| `remote` (`url`, `headers`, Streamable HTTP only; SSE via `mcp-remote`). |
+| | project | `<repo>/opencode.json` | JSONC | `mcp.servers` | Also read from `.opencode/opencode.json`. |
+| **Pi** | user | `~/.pi/agent/mcp.json` (or `$PI_CODING_AGENT_DIR`) | JSON | `mcpServers` | Built-in MCP (Pi 0.99+). `command` selects stdio, `url` selects Streamable HTTP; legacy SSE is rejected, so it goes through `mcp-remote`. |
+| | project | `<repo>/.pi/mcp.json` | JSON | `mcpServers` | Read only after project trust is granted. |
 | **Copilot in JetBrains / Visual Studio** | user/sln | JetBrains: `mcp.json` under the Copilot plugin config dir; VS: `.mcp.json` / `%USERPROFILE%\.mcp.json` | JSON | `servers` | Phase 3. |
 
 Clients to consider later: Windsurf, Zed, Cline/Roo, Gemini CLI, Continue, LM Studio, Goose. The adapter design makes each one about a day of work.
@@ -248,7 +252,9 @@ kumi/
 │  │  │  ├─ vscode.ts
 │  │  │  ├─ cursor.ts
 │  │  │  ├─ codex.ts
-│  │  │  └─ copilot-cli.ts
+│  │  │  ├─ copilot-cli.ts
+│  │  │  ├─ opencode.ts
+│  │  │  └─ pi.ts
 │  │  ├─ config-io/               # json.ts, jsonc.ts, toml.ts, atomic-write.ts
 │  │  ├─ install/                 # planner, diff, apply, rollback
 │  │  ├─ secrets/

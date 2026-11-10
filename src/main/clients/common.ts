@@ -64,7 +64,7 @@ export function adaptTransport(spec: ServerSpec, adapter: Pick<ClientAdapter, 't
   throw new UnsupportedError(`${adapter.displayName} doesn't support ${spec.transport} servers.`);
 }
 
-function stringRecord(v: unknown): Record<string, string> | undefined {
+export function stringRecord(v: unknown): Record<string, string> | undefined {
   if (!v || typeof v !== 'object' || Array.isArray(v)) return undefined;
   const out: Record<string, string> = {};
   for (const [k, x] of Object.entries(v)) if (typeof x === 'string') out[k] = x;

@@ -234,7 +234,7 @@ export function Installed({ onEdit, onAddCustom }: { onEdit: (source: WizardSour
         <div className="mb-2 flex items-center justify-between">
           <div>
             <h2 className="text-sm font-semibold">Project folders</h2>
-            <p className="text-xs text-muted">Kumi also reads project-level configs (.mcp.json, .vscode/mcp.json, .cursor/mcp.json) in these folders.</p>
+            <p className="text-xs text-muted">Kumi also reads project-level configs (.mcp.json, .vscode/mcp.json, .cursor/mcp.json, opencode.json, .pi/mcp.json) in these folders.</p>
           </div>
           <Button size="sm" icon={<FolderPlus className="size-3.5" />} onClick={() => addProject.mutate()}>
             Add folder

@@ -10,6 +10,8 @@ A desktop MCP marketplace. Browse MCP servers from the official [MCP Registry](h
 | Cursor | global, project (`.cursor/mcp.json`) | `~/.cursor/mcp.json` |
 | OpenAI Codex | global | `~/.codex/config.toml` (honors `CODEX_HOME`) |
 | GitHub Copilot CLI | global | `~/.copilot/mcp-config.json` |
+| OpenCode | global, project (`opencode.json`) | `~/.config/opencode/opencode.json` (SSE servers via `mcp-remote`) |
+| Pi | global, project (`.pi/mcp.json`) | `~/.pi/agent/mcp.json` (honors `PI_CODING_AGENT_DIR`; SSE servers via `mcp-remote`) |
 
 ## Showcase
 
@@ -99,7 +101,7 @@ Kumi stores its state, backups and cache in `~/.kumi` (override with `KUMI_DATA_
 To try the app without touching your real configs, point it at a throwaway home:
 
 ```bash
-env -u CLAUDE_CONFIG_DIR -u CODEX_HOME HOME=/tmp/kumi-home KUMI_DATA_DIR=/tmp/kumi-home/.kumi npm run dev
+env -u CLAUDE_CONFIG_DIR -u CODEX_HOME -u XDG_CONFIG_HOME -u PI_CODING_AGENT_DIR HOME=/tmp/kumi-home KUMI_DATA_DIR=/tmp/kumi-home/.kumi npm run dev
 ```
 
 ## Layout

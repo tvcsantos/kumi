@@ -141,3 +141,67 @@ describe('copilot-cli', () => {
     expect((parseJson(text) as { mcpServers: Record<string, unknown> }).mcpServers.context7).toMatchObject({ type: 'local', tools: ['*'] });
   });
 });
+
+describe('opencode', () => {
+  const adapter = getAdapter('opencode');
+
+  it('writes a local server as a command array under mcp.servers, keeping comments and other servers', () => {
+    const { text } = adapter.upsert(fixture('opencode.jsonc'), stdio, user, mac);
+    expect(text).toContain('// Theme and model');
+    const json = parseJson(text) as { model: string; mcp: { servers: Record<string, unknown> } };
+    expect(json.model).toBe('anthropic/claude-sonnet-5-5');
+    expect(json.mcp.servers.context7).toEqual({
+      type: 'local',
+      command: ['npx', '-y', '@upstash/context7-mcp@1.0.0'],
+      environment: { CONTEXT7_API_KEY: 'sk-1' },
+    });
+    expect(adapter.readServers(text, user).existing).toEqual({
+      name: 'existing',
+      transport: 'stdio',
+      command: 'uvx',
+      args: ['mcp-server-git'],
+      env: { LOG_LEVEL: 'info' },
+    });
+  });
+
+  it('writes remote servers with the remote type', () => {
+    const { text } = adapter.upsert('', remote, user, mac);
+    expect((parseJson(text) as { mcp: { servers: Record<string, unknown> } }).mcp.servers.remote).toEqual({
+      type: 'remote',
+      url: remote.url,
+      headers: remote.headers,
+    });
+  });
+
+  it('bridges SSE servers through mcp-remote', () => {
+    const { text, warnings } = adapter.upsert('', { ...remote, transport: 'sse' }, user, mac);
+    expect(adapter.readServers(text, user).remote).toMatchObject({ command: 'npx', transport: 'stdio' });
+    expect(warnings[0]).toMatch(/mcp-remote/);
+  });
+
+  it('uses ~/.config/opencode for user scope and opencode.json in the project', () => {
+    const env = { home: '/h', xdgConfig: '/h/.config', vars: {} } as never;
+    expect(adapter.configPath(env, user)).toBe('/h/.config/opencode/opencode.json');
+    expect(adapter.configPath(env, { kind: 'project', projectDir: '/repo' })).toBe('/repo/opencode.json');
+  });
+});
+
+describe('pi', () => {
+  const adapter = getAdapter('pi');
+
+  it('writes plain mcpServers entries without a type', () => {
+    const { text } = adapter.upsert('', remote, user, mac);
+    expect((parseJson(text) as { mcpServers: Record<string, unknown> }).mcpServers.remote).toEqual({ url: remote.url, headers: remote.headers });
+  });
+
+  it('bridges SSE servers, which Pi rejects', () => {
+    const { warnings } = adapter.upsert('', { ...remote, transport: 'sse' }, user, mac);
+    expect(warnings[0]).toMatch(/mcp-remote/);
+  });
+
+  it('uses the agent dir (honoring PI_CODING_AGENT_DIR) and .pi/mcp.json in the project', () => {
+    expect(adapter.configPath({ home: '/h', vars: {} } as never, user)).toBe('/h/.pi/agent/mcp.json');
+    expect(adapter.configPath({ home: '/h', vars: { PI_CODING_AGENT_DIR: '/pi' } } as never, user)).toBe('/pi/mcp.json');
+    expect(adapter.configPath({ home: '/h', vars: {} } as never, { kind: 'project', projectDir: '/repo' })).toBe('/repo/.pi/mcp.json');
+  });
+});
