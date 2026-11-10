@@ -15,7 +15,7 @@ A desktop MCP marketplace. Browse MCP servers from the official [MCP Registry](h
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/discover-dark.png">
-  <img alt="Discover: featured servers from the MCP Registry" src="docs/screenshots/discover.png">
+  <img alt="Discover: featured servers, with filters for each registry" src="docs/screenshots/discover.png">
 </picture>
 
 <table>
@@ -62,9 +62,9 @@ A desktop MCP marketplace. Browse MCP servers from the official [MCP Registry](h
     <td width="50%">
       <picture>
         <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/settings-dark.png">
-        <img alt="Settings: registry, secrets and detected apps" src="docs/screenshots/settings.png">
+        <img alt="Settings: registries, secrets and detected apps" src="docs/screenshots/settings.png">
       </picture>
-      <p align="center"><b>Settings</b>: registry, secrets default, and where each app keeps its config.</p>
+      <p align="center"><b>Settings</b>: your registries, secrets default, and where each app keeps its config.</p>
     </td>
   </tr>
 </table>
