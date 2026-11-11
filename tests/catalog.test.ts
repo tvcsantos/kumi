@@ -1,21 +1,25 @@
 import { promises as fs } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { OFFICIAL_REGISTRY_ID, type RegistryServer } from '@shared/registry';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { OFFICIAL_REGISTRY_ID, type RegistryHeader, type RegistryServer } from '@shared/registry';
 import { Catalog } from '../src/main/catalog/catalog';
 import { FileRegistry, parseServerList } from '../src/main/catalog/file';
 import { HttpCache, type Fetch } from '../src/main/catalog/http';
 import { ApiRegistry, DEFAULT_REGISTRY_URL } from '../src/main/catalog/registry';
 import { RegistryStore } from '../src/main/catalog/sources';
+import type { SecretBox } from '../src/main/secrets/secrets';
 
 let root: string;
 
-const fakeBox = {
-  available: () => true,
-  encrypt: (s: string) => Buffer.from(s).toString('base64'),
-  decrypt: (s: string) => Buffer.from(s, 'base64').toString(),
+const fakeBox: SecretBox = {
+  available: async () => true,
+  encrypt: async (s: string) => Buffer.from(s).toString('base64'),
+  decrypt: async (s: string) => Buffer.from(s, 'base64').toString(),
 };
+
+const secret = (name: string, value: string): RegistryHeader => ({ name, secret: true, value });
+const plain = (name: string, value: string): RegistryHeader => ({ name, secret: false, value });
 
 const server = (name: string, version = '1.0.0', extra: Partial<RegistryServer> = {}): RegistryServer => ({ name, version, ...extra });
 
@@ -36,11 +40,16 @@ function fakeFetch(routes: Record<string, unknown | ((url: string) => Response)>
   }) as Fetch;
 }
 
+let warn: ReturnType<typeof vi.spyOn>;
+
 beforeEach(async () => {
   root = await fs.mkdtemp(join(tmpdir(), 'kumi-catalog-'));
+  // Failed requests are logged; keep the test output clean.
+  warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
 });
 
 afterEach(async () => {
+  warn.mockRestore();
   // Cache writes finish in the background, so the folder may still be filling up.
   await fs.rm(root, { recursive: true, force: true, maxRetries: 5 });
 });
@@ -109,12 +118,47 @@ describe('FileRegistry', () => {
     expect((await reg.search('')).servers).toHaveLength(2);
   });
 
-  it('fetches a remote file with the token', async () => {
+  it('fetches a remote file with the registry headers', async () => {
     const calls: Call[] = [];
     const http = new HttpCache(root, fakeFetch({ 'https://acme.test/servers.json': [server('acme/db')] }, calls));
-    const reg = new FileRegistry(http, 'https://acme.test/servers.json', 'tok');
+    const reg = new FileRegistry(http, 'https://acme.test/servers.json', { Authorization: 'Bearer tok', 'X-Tenant': 'acme' });
     expect(await reg.probe()).toBe(1);
-    expect(calls[0].headers.authorization).toBe('Bearer tok');
+    expect(calls[0].headers).toMatchObject({ authorization: 'Bearer tok', 'x-tenant': 'acme', accept: 'application/json' });
+
+    // A custom Accept replaces the default rather than being added to it.
+    await new FileRegistry(http, 'https://acme.test/servers.json', { Accept: 'application/vnd.acme+json' }).probe();
+    expect(calls[1].headers.accept).toBe('application/vnd.acme+json');
+    expect(calls[1].headers).not.toHaveProperty('Accept');
+  });
+});
+
+describe('HttpCache errors', () => {
+  const URL_ = 'https://acme.test/servers.json';
+  const get = (respond: () => Response | Promise<Response>) => new HttpCache(root, (async () => respond()) as unknown as Fetch).getJson(URL_, { notFound: 'Registry file not found' });
+
+  it('says which URL failed and what the server answered', async () => {
+    const res = () => new Response(JSON.stringify({ error: { message: 'repository not found' } }), { status: 404, statusText: 'Not Found' });
+    await expect(get(res)).rejects.toThrow('Registry file not found. https://acme.test/servers.json answered HTTP 404 Not Found: repository not found');
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining(`[registry] GET ${URL_} failed`));
+  });
+
+  it('leaves out bodies that only repeat the status, and HTML pages', async () => {
+    await expect(get(() => new Response('Not Found', { status: 404, statusText: 'Not Found' }))).rejects.toThrow(/answered HTTP 404 Not Found$/);
+    await expect(get(() => new Response('<!DOCTYPE html><html>login</html>', { status: 403 }))).rejects.toThrow(
+      /^Access denied\. https:\/\/acme\.test\/servers\.json answered HTTP 403: the server sent an HTML page\. Check the registry's headers\.$/,
+    );
+  });
+
+  it('explains a response that isn\'t JSON', async () => {
+    const html = () => new Response('<html></html>', { status: 200, headers: { 'content-type': 'text/html' } });
+    await expect(get(html)).rejects.toThrow(`${URL_} didn't answer with JSON (content-type: text/html).`);
+  });
+
+  it('gives the network cause instead of "fetch failed"', async () => {
+    const cause = Object.assign(new Error('getaddrinfo ENOTFOUND acme.test'), { code: 'ENOTFOUND' });
+    await expect(get(() => Promise.reject(new TypeError('fetch failed', { cause })))).rejects.toThrow(`Couldn't reach ${URL_}: getaddrinfo ENOTFOUND acme.test`);
+    const tls = Object.assign(new Error('certificate has expired'), { code: 'CERT_HAS_EXPIRED' });
+    await expect(get(() => Promise.reject(new TypeError('fetch failed', { cause: tls })))).rejects.toThrow('certificate has expired (CERT_HAS_EXPIRED)');
   });
 });
 
@@ -130,10 +174,10 @@ describe('ApiRegistry.probe', () => {
     await expect(ApiRegistry.probe(http, 'https://other.test')).rejects.toThrow(/No MCP Registry API found/);
   });
 
-  it('sends the token and reports a rejected one', async () => {
+  it('sends the headers and reports rejected credentials', async () => {
     const calls: Call[] = [];
     const http = new HttpCache(root, fakeFetch({ 'https://acme.test/v0.1/servers?limit=1': () => new Response('', { status: 401 }) }, calls));
-    await expect(ApiRegistry.probe(http, 'https://acme.test/v0.1', 'bad')).rejects.toThrow(/Access denied/);
+    await expect(ApiRegistry.probe(http, 'https://acme.test/v0.1', { Authorization: 'Bearer bad' })).rejects.toThrow(/Access denied/);
     expect(calls[0].headers.authorization).toBe('Bearer bad');
   });
 });
@@ -145,28 +189,69 @@ describe('RegistryStore', () => {
     expect(list[0]).toMatchObject({ id: OFFICIAL_REGISTRY_ID, builtIn: true, enabled: true, location: DEFAULT_REGISTRY_URL });
   });
 
-  it('stores tokens encrypted and only hands them out in the main process', async () => {
+  it('refuses to send secret headers over plain http, except to localhost', async () => {
     const store = new RegistryStore(root, fakeBox);
-    const added = await store.add({ name: 'Acme', kind: 'api', location: 'https://reg.acme.test/v0.1', token: 'secret-token' });
-    expect(added.hasToken).toBe(true);
-    expect(added).not.toHaveProperty('token');
-    expect(await fs.readFile(join(root, 'registries.json'), 'utf8')).not.toContain('secret-token');
-    expect((await store.resolve(added.id))?.token).toBe('secret-token');
-
-    await store.update(added.id, { token: null });
-    expect((await store.resolve(added.id))?.token).toBeUndefined();
-  });
-
-  it('refuses to send a token over plain http, except to localhost', async () => {
-    const store = new RegistryStore(root, fakeBox);
-    await expect(store.add({ name: 'Acme', kind: 'api', location: 'http://reg.acme.test', token: 't' })).rejects.toThrow(/https/);
-    await expect(store.add({ name: 'Dev', kind: 'api', location: 'http://localhost:8080', token: 't' })).resolves.toMatchObject({ hasToken: true });
+    const headers = [secret('Authorization', 'Bearer t')];
+    await expect(store.add({ name: 'Acme', kind: 'api', location: 'http://reg.acme.test', headers })).rejects.toThrow(/https/);
+    await expect(store.add({ name: 'Dev', kind: 'api', location: 'http://localhost:8080', headers })).resolves.toMatchObject({ headers: [{ name: 'Authorization', secret: true }] });
+    await expect(store.add({ name: 'Tenant', kind: 'api', location: 'http://reg.acme.test', headers: [plain('X-Tenant', 'acme')] })).resolves.toMatchObject({ headers: [plain('X-Tenant', 'acme')] });
     await expect(store.add({ name: 'File', kind: 'file', location: 'relative/servers.json' })).rejects.toThrow(/absolute/);
   });
 
-  it('refuses a token when the keychain is unavailable', async () => {
-    const store = new RegistryStore(root, { ...fakeBox, available: () => false });
-    await expect(store.add({ name: 'Acme', kind: 'api', location: 'https://reg.acme.test', token: 't' })).rejects.toThrow(/keychain/);
+  it('encrypts secret header values and keeps them in the main process, while plain ones are shown', async () => {
+    const store = new RegistryStore(root, fakeBox);
+    const added = await store.add({
+      name: 'Acme',
+      kind: 'api',
+      location: 'https://reg.acme.test/v0.1',
+      headers: [secret('X-Api-Key', 'secret-key'), plain('X-Tenant', 'acme')],
+    });
+    expect(added.headers).toEqual([{ name: 'X-Api-Key', secret: true }, plain('X-Tenant', 'acme')]);
+    const saved = await fs.readFile(join(root, 'registries.json'), 'utf8');
+    expect(saved).not.toContain('secret-key');
+    expect(saved).toContain('acme');
+    expect((await store.resolve(added.id))?.headers).toEqual([secret('X-Api-Key', 'secret-key'), plain('X-Tenant', 'acme')]);
+  });
+
+  it('replaces the header list on update, keeping a secret whose value is left out', async () => {
+    const store = new RegistryStore(root, fakeBox);
+    const { id } = await store.add({ name: 'Acme', kind: 'api', location: 'https://reg.acme.test', headers: [secret('X-Api-Key', 'k1'), plain('X-Tenant', 'acme')] });
+    const resolved = async () => (await store.resolve(id))?.headers;
+
+    // Keep the secret (case-insensitive name), change the plain one, add one; X-Tenant is dropped.
+    await store.update(id, { headers: [{ name: 'x-api-key', secret: true }, plain('X-Region', 'eu')] });
+    expect(await resolved()).toEqual([secret('x-api-key', 'k1'), plain('X-Region', 'eu')]);
+    await store.update(id, { name: 'Acme 2' });
+    expect(await resolved()).toEqual([secret('x-api-key', 'k1'), plain('X-Region', 'eu')]);
+
+    // A secret can become plain only with its value entered again; a plain header can become secret.
+    await expect(store.update(id, { headers: [{ name: 'x-api-key', secret: false }] })).rejects.toThrow(/Enter a value/);
+    await expect(store.update(id, { headers: [{ name: 'X-Other', secret: true }] })).rejects.toThrow(/Enter a value/);
+    await store.update(id, { headers: [plain('x-api-key', 'k2'), secret('X-Region', 'eu')] });
+    expect(await resolved()).toEqual([plain('x-api-key', 'k2'), secret('X-Region', 'eu')]);
+
+    expect((await store.update(id, { headers: [] })).headers).toEqual([]);
+    expect(await resolved()).toEqual([]);
+    expect(await fs.readFile(join(root, 'registries.json'), 'utf8')).not.toContain('encryptedSecrets');
+  });
+
+  it('rejects bad headers', async () => {
+    const store = new RegistryStore(root, fakeBox);
+    const add = (...headers: RegistryHeader[]) => store.add({ name: 'Acme', kind: 'api', location: 'https://reg.acme.test', headers });
+    await expect(add(plain('Bad Name', 'v'))).rejects.toThrow(/valid header name/);
+    await expect(add(plain('Host', 'evil.test'))).rejects.toThrow(/HTTP connection/);
+    await expect(add(secret('X-A', 'one\r\nX-B: two'))).rejects.toThrow(/single line/);
+    await expect(add(plain('X-A', ' '))).rejects.toThrow(/Enter a value/);
+    await expect(add(plain('Accept', 'application/vnd.acme+json'))).resolves.toMatchObject({ headers: [plain('Accept', 'application/vnd.acme+json')] });
+    await expect(add({ name: 'X-A', secret: true })).rejects.toThrow(/Enter a value/);
+    await expect(add(plain('X-A', '1'), secret('x-a', '2'))).rejects.toThrow(/twice/);
+  });
+
+  it('needs the keychain only for secret headers', async () => {
+    const store = new RegistryStore(root, { ...fakeBox, available: async () => false });
+    const add = (h: RegistryHeader) => store.add({ name: 'Acme', kind: 'api', location: 'https://reg.acme.test', headers: [h] });
+    await expect(add(secret('Authorization', 'Bearer t'))).rejects.toThrow(/keychain/);
+    await expect(add(plain('X-Tenant', 'acme'))).resolves.toMatchObject({ headers: [plain('X-Tenant', 'acme')] });
   });
 
   it('lets the official registry be turned off but not edited or removed', async () => {
@@ -258,5 +343,25 @@ describe('Catalog', () => {
     const added = await catalog.add({ name: 'Acme', kind: 'api', location: 'https://reg.acme.test' });
     expect(added.location).toBe('https://reg.acme.test/v0');
     expect(await catalog.list()).toHaveLength(2);
+  });
+
+  it('sends the custom headers when checking and searching, including after an edit', async () => {
+    const calls: Call[] = [];
+    const routes = {
+      'https://reg.acme.test/v0.1/servers?limit=1': { servers: [] },
+      'https://reg.acme.test/v0.1/servers?limit=30&version=latest': { servers: [{ server: server('acme/db') }] },
+    };
+    const catalog = new Catalog(new RegistryStore(root, fakeBox), new HttpCache(join(root, 'cache-dir'), fakeFetch(routes, calls)));
+    await catalog.update(OFFICIAL_REGISTRY_ID, { enabled: false });
+    const added = await catalog.add({ name: 'Acme', kind: 'api', location: 'https://reg.acme.test/v0.1', headers: [secret('X-Api-Key', 'k1')] });
+    expect(calls.at(-1)!.headers['x-api-key']).toBe('k1');
+
+    await catalog.update(added.id, { headers: [{ name: 'X-Api-Key', secret: true }, plain('X-Tenant', 'acme')] });
+    expect(calls.at(-1)!.headers).toMatchObject({ 'x-api-key': 'k1', 'x-tenant': 'acme' });
+
+    expect((await catalog.search('')).items.map((i) => i.server.name)).toEqual(['acme/db']);
+    expect(calls.at(-1)!.url).toContain('version=latest');
+    expect(calls.at(-1)!.headers).toMatchObject({ 'x-api-key': 'k1', 'x-tenant': 'acme' });
+    await expect(catalog.add({ name: 'Bad', kind: 'api', location: 'https://reg.acme.test/v0.1', headers: [plain('Host', 'x')] })).rejects.toThrow(/HTTP connection/);
   });
 });

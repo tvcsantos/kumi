@@ -41,7 +41,7 @@ export function About() {
       <div className="flex flex-col items-center gap-3 pt-6 pb-4 text-center">
         <AppIcon size={112} className="drop-shadow-md" />
         <h1 className="mt-2 text-3xl font-semibold tracking-tight">
-          Kumi <span className="font-normal text-spark">組</span>
+          Kumi
         </h1>
         <p className="max-w-md text-muted">Find MCP servers, fill in their settings once, and install them into every AI tool you use.</p>
         {info.data && <Badge>Version {info.data.version}</Badge>}
@@ -58,7 +58,7 @@ export function About() {
       <div className="grid gap-5 md:grid-cols-2">
         <Card title="The name">
           <p className="text-muted">
-            <span className="font-medium text-ink">組 (kumi)</span> means a group, a set or a team. As a verb, <span className="italic">kumu</span> is to
+            <span className="font-medium text-ink">Kumi</span> [kɯ.mi] (組) means a group, a set or a team. As a verb, <span className="italic">kumu</span> is to
             assemble, or to braid, as in <span className="italic">kumihimo</span>, the Japanese art of braided cord.
           </p>
           <p className="mt-2 text-muted">Kumi assembles your MCP servers into one set and weaves them into each of your tools.</p>

@@ -1,11 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { CheckCircle2, CircleDashed, FileCode, FileJson, FolderSearch, Globe, History, Lock, Pencil, Plus, Trash2 } from 'lucide-react';
+import { CheckCircle2, CircleDashed, FileCode, FileJson, FolderSearch, Globe, History, Lock, Monitor, Moon, Pencil, Plus, Sun, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import type { RegistryInfo } from '@shared/registry';
+import type { Settings as SettingsData, ThemeSetting } from '@shared/api';
 import type { SecretsMode } from '@shared/types';
 import { ClientMark } from '../components/bits';
 import { RegistryDialog } from '../components/RegistryDialog';
-import { Badge, Button, PageHeader, Select, Spinner } from '../components/ui';
+import { Badge, Button, cx, PageHeader, Select, Spinner } from '../components/ui';
 import { api, errorMessage } from '../lib/api';
 import { useRegistries } from '../lib/hooks';
 
@@ -46,9 +47,9 @@ function Registries() {
                 <span className="truncate font-medium">{r.name}</span>
                 {r.builtIn && <Badge tone="accent">built in</Badge>}
                 {r.kind === 'file' && <Badge>file</Badge>}
-                {r.hasToken && (
-                  <Badge title="Uses a saved token">
-                    <Lock className="size-3" /> token
+                {r.headers.length > 0 && (
+                  <Badge title={`Sends ${r.headers.map((h) => (h.secret ? `${h.name} (secret)` : h.name)).join(', ')}`}>
+                    {r.headers.some((h) => h.secret) && <Lock className="size-3" />} {r.headers.length === 1 ? '1 header' : `${r.headers.length} headers`}
                   </Badge>
                 )}
               </div>
@@ -99,6 +100,36 @@ function Registries() {
   );
 }
 
+const THEMES: { value: ThemeSetting; label: string; icon: React.ReactNode }[] = [
+  { value: 'system', label: 'System', icon: <Monitor className="size-4" /> },
+  { value: 'light', label: 'Light', icon: <Sun className="size-4" /> },
+  { value: 'dark', label: 'Dark', icon: <Moon className="size-4" /> },
+];
+
+/** A segmented control: one button per theme, the current one raised. */
+function ThemePicker({ value, onChange }: { value: ThemeSetting; onChange: (theme: ThemeSetting) => void }) {
+  return (
+    <div role="radiogroup" aria-label="Theme" className="inline-flex gap-1 rounded-xl border border-line bg-sunken p-1">
+      {THEMES.map((t) => (
+        <button
+          key={t.value}
+          type="button"
+          role="radio"
+          aria-checked={value === t.value}
+          onClick={() => onChange(t.value)}
+          className={cx(
+            'inline-flex h-8 items-center gap-1.5 rounded-lg px-3 text-sm font-medium transition-colors',
+            value === t.value ? 'bg-panel text-ink shadow-sm ring-1 ring-line' : 'text-muted hover:text-ink',
+          )}
+        >
+          {t.icon}
+          {t.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export function Settings() {
   const queryClient = useQueryClient();
   const settings = useQuery({ queryKey: ['settings'], queryFn: api.settingsGet });
@@ -108,7 +139,10 @@ export function Settings() {
 
   const save = useMutation({
     mutationFn: api.settingsSet,
+    // Show the choice right away; the theme itself switches once the main process has saved it.
+    onMutate: (patch) => queryClient.setQueryData<SettingsData>(['settings'], (s) => (s ? { ...s, ...patch } : s)),
     onSuccess: (s) => queryClient.setQueryData(['settings'], s),
+    onError: () => void queryClient.invalidateQueries({ queryKey: ['settings'] }),
   });
   const restore = useMutation({
     mutationFn: api.backupsRestore,
@@ -121,6 +155,10 @@ export function Settings() {
   return (
     <div className="space-y-5">
       <PageHeader title="Settings" />
+
+      <Section title="Appearance" description="System follows your computer's light or dark mode.">
+        <ThemePicker value={settings.data?.theme ?? 'system'} onChange={(theme) => save.mutate({ theme })} />
+      </Section>
 
       <Registries />
 

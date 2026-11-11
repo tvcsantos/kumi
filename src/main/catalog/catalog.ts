@@ -4,7 +4,7 @@ import type { CatalogItem, CatalogPage, RegistryDraft, RegistryInfo, RegistryPat
 import { FileRegistry } from './file';
 import type { HttpCache } from './http';
 import { ApiRegistry, type RegistrySource } from './registry';
-import type { RegistryStore, ResolvedRegistry } from './sources';
+import { applyHeaders, headerRecord, validateHeaders, type RegistryStore, type ResolvedRegistry } from './sources';
 
 /** Per-registry cursors; `null` means "first page". Registries that ran out are left out. */
 type MergedCursor = Record<string, string | null>;
@@ -34,10 +34,11 @@ export class Catalog {
   ) {}
 
   private sourceFor(r: ResolvedRegistry): RegistrySource {
-    const key = [r.kind, r.location, r.token ?? ''].join('\n');
+    const headers = headerRecord(r.headers);
+    const key = JSON.stringify([r.kind, r.location, headers ?? {}]);
     const hit = this.sources.get(r.id);
     if (hit?.key === key) return hit.source;
-    const source = r.kind === 'api' ? new ApiRegistry(this.http, r.location, r.token) : new FileRegistry(this.http, r.location, r.token);
+    const source = r.kind === 'api' ? new ApiRegistry(this.http, r.location, headers) : new FileRegistry(this.http, r.location, headers);
     this.sources.set(r.id, { key, source });
     return source;
   }
@@ -88,25 +89,28 @@ export class Catalog {
   }
 
   /** Checks the registry answers before saving it. API URLs may be rewritten to the versioned base URL. */
-  private async check(kind: RegistryDraft['kind'], location: string, token?: string): Promise<string> {
-    if (kind === 'api') return ApiRegistry.probe(this.http, location, token);
-    await new FileRegistry(this.http, location, token).probe();
+  private async check(kind: RegistryDraft['kind'], location: string, headers?: Record<string, string>): Promise<string> {
+    if (kind === 'api') return ApiRegistry.probe(this.http, location, headers);
+    await new FileRegistry(this.http, location, headers).probe();
     return location;
   }
 
   async add(draft: RegistryDraft): Promise<RegistryInfo> {
-    const location = await this.check(draft.kind, draft.location.trim(), draft.token || undefined);
+    const headers = applyHeaders([], draft.headers ?? []);
+    validateHeaders(headers);
+    const location = await this.check(draft.kind, draft.location.trim(), headerRecord(headers));
     return this.store.add({ ...draft, location });
   }
 
   async update(id: string, patch: RegistryPatch): Promise<RegistryInfo> {
     const current = await this.store.resolve(id);
     if (!current) throw new Error('Registry not found');
-    const changesSource = patch.kind !== undefined || patch.location !== undefined || patch.token !== undefined;
+    const changesSource = patch.kind !== undefined || patch.location !== undefined || patch.headers !== undefined;
     if (!current.builtIn && changesSource) {
       const kind = patch.kind ?? current.kind;
-      const token = patch.token === undefined ? current.token : patch.token || undefined;
-      patch = { ...patch, location: await this.check(kind, (patch.location ?? current.location).trim(), token) };
+      const headers = patch.headers === undefined ? current.headers : applyHeaders(current.headers, patch.headers);
+      validateHeaders(headers);
+      patch = { ...patch, location: await this.check(kind, (patch.location ?? current.location).trim(), headerRecord(headers)) };
     }
     return this.store.update(id, patch);
   }

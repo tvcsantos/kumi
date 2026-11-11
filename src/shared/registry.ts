@@ -72,7 +72,18 @@ export const OFFICIAL_REGISTRY_ID = 'official';
 /** `api` speaks the MCP Registry API; `file` is one static JSON file listing servers. */
 export type RegistryKind = 'api' | 'file';
 
-/** A configured source of servers, as the renderer sees it (tokens never leave the main process). */
+/**
+ * A request header sent to a registry. Secret values are stored encrypted and never leave the main process,
+ * so the renderer sees them without `value`; plain values are stored and shown as they are.
+ * When saving, a secret header without `value` keeps the value saved under the same name.
+ */
+export interface RegistryHeader {
+  name: string;
+  secret: boolean;
+  value?: string;
+}
+
+/** A configured source of servers, as the renderer sees it. */
 export interface RegistryInfo {
   id: string;
   name: string;
@@ -82,18 +93,31 @@ export interface RegistryInfo {
   enabled: boolean;
   /** The official registry: can be disabled, but not edited or removed. */
   builtIn: boolean;
-  hasToken: boolean;
+  /** Headers sent with every request, e.g. `Authorization: Bearer …` (secret) or `X-Tenant` (plain). */
+  headers: RegistryHeader[];
 }
 
 export interface RegistryDraft {
   name: string;
   kind: RegistryKind;
   location: string;
-  /** Bearer token. On update: omit to keep the current one, null to remove it. */
-  token?: string | null;
+  headers?: RegistryHeader[];
 }
 
-export type RegistryPatch = Partial<RegistryDraft> & { enabled?: boolean };
+export interface RegistryPatch {
+  name?: string;
+  kind?: RegistryKind;
+  location?: string;
+  enabled?: boolean;
+  /** Replaces the whole list. A secret header without a value keeps its saved one. */
+  headers?: RegistryHeader[];
+}
+
+/** Valid HTTP header name (an RFC 9110 token). */
+export const HEADER_NAME = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/;
+
+/** Headers that belong to the HTTP connection, so fetch won't let us set them. */
+export const RESERVED_HEADERS = ['host', 'content-length', 'connection', 'keep-alive', 'transfer-encoding', 'upgrade', 'te', 'trailer', 'expect'];
 
 /** A server together with the registry it came from. */
 export interface CatalogItem {

@@ -1,7 +1,7 @@
 // IPC handlers. Every argument from the renderer is validated before it reaches a service.
 
 import { isAbsolute } from 'node:path';
-import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, nativeTheme, shell } from 'electron';
 import { z } from 'zod';
 import { API_METHODS, channel, type IpcResult, type KumiApi } from '@shared/api';
 import { CLIENT_IDS, type ClientInfo } from '@shared/types';
@@ -49,12 +49,17 @@ const installRequest = z.object({
 const uninstallTarget = z.object({ clientId, scope, name: z.string().min(1) });
 const settingsPatch = z.object({
   defaultSecretsMode: z.enum(['inline', 'client-native']).optional(),
+  theme: z.enum(['system', 'light', 'dark']).optional(),
+  setupDone: z.boolean().optional(),
 });
 const registryDraft = z.object({
   name: z.string().trim().min(1, 'Give the registry a name').max(60),
   kind: z.enum(['api', 'file']),
   location: z.string().trim().min(1, 'Enter a URL or file path').max(2000),
-  token: z.string().max(4000).nullable().optional(),
+  headers: z
+    .array(z.object({ name: z.string().max(200), secret: z.boolean(), value: z.string().max(4000).optional() }))
+    .max(20, 'At most 20 headers')
+    .optional(),
 });
 const registryPatch = registryDraft.partial().extend({ enabled: z.boolean().optional() });
 
@@ -151,7 +156,12 @@ function createHandlers(s: Services): Handlers {
       await shell.openExternal(z.url({ protocol: /^https?$/ }).parse(url));
     },
     settingsGet: () => s.settings.get(),
-    settingsSet: (patch) => s.settings.set(settingsPatch.parse(patch)),
+    settingsSet: async (patch) => {
+      const next = await s.settings.set(settingsPatch.parse(patch));
+      // The renderer's prefers-color-scheme follows this, so the CSS needs nothing else.
+      nativeTheme.themeSource = next.theme;
+      return next;
+    },
   };
 }
 

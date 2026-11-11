@@ -15,12 +15,66 @@ interface CacheEntry {
 
 export type Fetch = typeof fetch;
 
+/** A request that failed. `status` is set when the server answered; `permanent` failures aren't retried. */
+export class HttpError extends Error {
+  constructor(
+    message: string,
+    readonly status?: number,
+    readonly permanent = false,
+  ) {
+    super(message);
+  }
+}
+
+const MAX_DETAIL = 300;
+
+/** What the server said, in one short line: the `error`/`message` of a JSON body, or its text. Empty for HTML pages. */
+export async function responseDetail(res: Response): Promise<string> {
+  let text: string;
+  try {
+    text = (await res.text()).trim();
+  } catch {
+    return '';
+  }
+  if (!text) return '';
+  if (/^<(!doctype|html)/i.test(text)) return 'the server sent an HTML page';
+  try {
+    const body = JSON.parse(text) as Record<string, unknown>;
+    for (const key of ['error_description', 'message', 'error', 'detail', 'title']) {
+      const v = body?.[key];
+      if (typeof v === 'string' && v.trim()) {
+        text = v;
+        break;
+      }
+      if (v && typeof v === 'object' && typeof (v as { message?: unknown }).message === 'string') {
+        text = (v as { message: string }).message;
+        break;
+      }
+    }
+  } catch {
+    // not JSON: use the text as is
+  }
+  text = text.replace(/\s+/g, ' ');
+  return text.length > MAX_DETAIL ? `${text.slice(0, MAX_DETAIL)}…` : text;
+}
+
+/** The real reason behind fetch's generic "fetch failed": DNS, refused connection, TLS, timeout. */
+export function networkReason(e: unknown): string {
+  if (e instanceof Error && (e.name === 'TimeoutError' || e.name === 'AbortError')) return `no answer after ${TIMEOUT_MS / 1000}s`;
+  let err: unknown = e;
+  // undici wraps the system error in `cause`, sometimes twice.
+  while (err instanceof Error && err.cause instanceof Error) err = err.cause;
+  if (!(err instanceof Error)) return String(err);
+  const code = (err as { code?: unknown }).code;
+  return typeof code === 'string' && !err.message.includes(code) ? `${err.message} (${code})` : err.message;
+}
+
 export interface GetOptions {
-  /** Sent as a bearer token. */
-  token?: string;
+  /** Extra request headers, e.g. the registry's `Authorization` or API key. */
+  headers?: Record<string, string>;
   /** Skip the cache entirely: no fresh or stale hits, nothing stored. Used to check a registry before saving it. */
   noCache?: boolean;
-  /** Error message for a 404. */
+  /** What a 404 means here, e.g. "Registry file not found". */
   notFound?: string;
 }
 
@@ -59,16 +113,36 @@ export class HttpCache {
     const hit = opts.noCache ? undefined : cache[url];
     if (hit && Date.now() - hit.at < FRESH_MS) return hit.data as T;
 
+    // Lower-case the names so a custom header replaces ours rather than being merged into it.
     const headers: Record<string, string> = { accept: 'application/json' };
-    if (opts.token) headers.authorization = `Bearer ${opts.token}`;
+    for (const [name, value] of Object.entries(opts.headers ?? {})) headers[name.toLowerCase()] = value;
     let lastError: unknown;
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
-        const res = await this.fetchImpl(url, { signal: AbortSignal.timeout(TIMEOUT_MS), headers });
-        if (res.status === 404) throw Object.assign(new Error(opts.notFound ?? 'Not found'), { permanent: true });
-        if (res.status === 401 || res.status === 403) throw Object.assign(new Error(`Access denied (HTTP ${res.status}). Check the token.`), { permanent: true });
-        if (!res.ok) throw new Error(`Registry returned HTTP ${res.status}`);
-        const data = (await res.json()) as T;
+        let res: Response;
+        try {
+          res = await this.fetchImpl(url, { signal: AbortSignal.timeout(TIMEOUT_MS), headers });
+        } catch (e) {
+          throw new HttpError(`Couldn't reach ${url}: ${networkReason(e)}`);
+        }
+        if (!res.ok) {
+          let detail = await responseDetail(res);
+          if (detail.toLowerCase() === res.statusText.toLowerCase()) detail = '';
+          const said = `${url} answered HTTP ${res.status}${res.statusText ? ` ${res.statusText}` : ''}${detail ? `: ${detail}` : ''}`;
+          if (res.status === 404) throw new HttpError(`${opts.notFound ?? 'Not found'}. ${said}`, 404, true);
+          if (res.status === 401 || res.status === 403) {
+            throw new HttpError(`Access denied. ${said}. Check the registry's headers.`, res.status, true);
+          }
+          throw new HttpError(said, res.status);
+        }
+        const text = await res.text();
+        let data: T;
+        try {
+          data = JSON.parse(text) as T;
+        } catch {
+          const type = res.headers.get('content-type');
+          throw new HttpError(`${url} didn't answer with JSON${type ? ` (content-type: ${type})` : ''}.`, res.status, true);
+        }
         if (!opts.noCache) {
           cache[url] = { at: Date.now(), data };
           void this.saveCache();
@@ -76,10 +150,11 @@ export class HttpCache {
         return data;
       } catch (e) {
         lastError = e;
-        if ((e as { permanent?: boolean }).permanent) break;
+        if (e instanceof HttpError && e.permanent) break;
         await new Promise((r) => setTimeout(r, 400 * 2 ** attempt));
       }
     }
+    console.warn(`[registry] GET ${url} failed${hit ? ', using the cached copy' : ''}: ${lastError instanceof Error ? lastError.message : String(lastError)}`);
     if (hit) return hit.data as T;
     throw lastError instanceof Error ? lastError : new Error(String(lastError));
   }

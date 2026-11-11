@@ -1,4 +1,4 @@
-# Kumi 組
+# Kumi
 
 A desktop MCP marketplace. Browse MCP servers from the official [MCP Registry](https://registry.modelcontextprotocol.io) and your own registries, fill in their settings, and install them into the AI tools you use. Kumi writes the correct config, in the correct format and location, for each one.
 
@@ -76,7 +76,7 @@ Screenshots follow your GitHub theme (light or dark).
 ## Features
 
 - **Catalog**: search the official registry and your own at once, or filter to one; featured servers; offline cache.
-- **Multiple registries**: add any server that implements the MCP Registry API, or a static JSON file (URL or local path) listing `server.json` entries. Private registries can use a bearer token, stored encrypted with the OS keychain. The official registry can be turned off.
+- **Multiple registries**: add any server that implements the MCP Registry API, or a static JSON file (URL or local path) listing `server.json` entries. Private registries can send request headers (`Authorization: Bearer …`, an API key, a tenant id, …); secret ones are stored encrypted with the OS keychain. The official registry can be turned off.
 - **Generated install forms**: env vars, arguments, headers and URL variables come from each server's `server.json`. Secrets are masked.
 - **Preview before writing**: a per-file diff of the exact edit. Secrets are hidden in the preview.
 - **Safe edits**: comments, key order and unrelated settings are preserved. Writes are atomic, each file is backed up before every change (one-click restore), and a write is refused if the file changed after the preview or if the edit would touch anything outside the server entry.

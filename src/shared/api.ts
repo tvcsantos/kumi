@@ -16,8 +16,14 @@ import type {
   ServerSpec,
 } from './types';
 
+/** `system` follows the OS appearance. */
+export type ThemeSetting = 'system' | 'light' | 'dark';
+
 export interface Settings {
   defaultSecretsMode: SecretsMode;
+  theme: ThemeSetting;
+  /** The first-run welcome screen has been completed. */
+  setupDone: boolean;
 }
 
 export interface AppInfo {

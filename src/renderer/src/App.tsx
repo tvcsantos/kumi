@@ -1,9 +1,11 @@
+import { useQuery } from '@tanstack/react-query';
 import { Compass, Info, Layers, Settings as SettingsIcon } from 'lucide-react';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { CatalogItem } from '@shared/registry';
 import { AppIcon } from './components/bits';
 import { InstallWizard, type WizardSource } from './components/InstallWizard';
 import { cx } from './components/ui';
+import { api } from './lib/api';
 import { useInstalled } from './lib/hooks';
 import { dismissSplash } from './lib/splash';
 import { About } from './pages/About';
@@ -11,6 +13,7 @@ import { Discover } from './pages/Discover';
 import { Installed } from './pages/Installed';
 import { ServerDetail } from './pages/ServerDetail';
 import { Settings } from './pages/Settings';
+import { Welcome } from './pages/Welcome';
 
 type Route = { page: 'discover' } | { page: 'server'; item: CatalogItem } | { page: 'installed' } | { page: 'settings' } | { page: 'about' };
 
@@ -36,6 +39,7 @@ export function App() {
   const [route, setRoute] = useState<Route>({ page: 'discover' });
   const [wizard, setWizard] = useState<WizardSource | null>(null);
   const installed = useInstalled();
+  const settings = useQuery({ queryKey: ['settings'], queryFn: api.settingsGet });
   const serverCount = new Set(installed.data?.entries.map((e) => e.name)).size;
   const main = useRef<HTMLElement>(null);
 
@@ -45,10 +49,15 @@ export function App() {
   };
   const section = route.page === 'server' ? 'discover' : route.page;
 
-  // The first list of installed servers waits for startup, so it marks when the app is ready to show.
+  // Both wait for startup, so together they mark when the app is ready to show.
+  const ready = !installed.isPending && !settings.isPending;
   useEffect(() => {
-    if (!installed.isPending) dismissSplash();
-  }, [installed.isPending]);
+    if (ready) dismissSplash();
+  }, [ready]);
+
+  // The splash covers the window until settings load. If they can't, show the app rather than block it.
+  if (!ready) return null;
+  if (settings.data && !settings.data.setupDone) return <Welcome />;
 
   return (
     <div className="flex h-full">
@@ -57,7 +66,7 @@ export function App() {
           <AppIcon size={34} />
           <div>
             <div className="text-lg leading-tight font-semibold tracking-tight">
-              Kumi <span className="font-normal text-spark">組</span>
+              Kumi
             </div>
             <div className="text-xs text-muted">MCP marketplace</div>
           </div>

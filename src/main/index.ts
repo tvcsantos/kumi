@@ -1,3 +1,4 @@
+import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { app, BrowserWindow, nativeTheme, session, shell } from 'electron';
 import { Catalog } from './catalog/catalog';
@@ -12,6 +13,11 @@ import { BackupService } from './state/backups';
 import { StateStore } from './state/store';
 
 const isDev = !!process.env.ELECTRON_RENDERER_URL;
+const dataDir = process.env.KUMI_DATA_DIR ?? join(homedir(), '.kumi');
+const settings = new SettingsStore(dataDir);
+
+// Matches the splash screen, so the window never flashes a different color while it loads or switches theme.
+const windowBackground = () => (nativeTheme.shouldUseDarkColors ? '#14161c' : '#f7f2e9');
 // Packaged builds get their icon from the app bundle; in dev, use ours instead of Electron's.
 const devIcon = isDev ? join(__dirname, '../../build', process.platform === 'darwin' ? 'icon-mac.png' : 'icon.png') : undefined;
 
@@ -36,8 +42,7 @@ function createWindow() {
     show: false,
     title: 'Kumi',
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
-    // Matches the splash screen, so the window never flashes a different color while it loads.
-    backgroundColor: nativeTheme.shouldUseDarkColors ? '#14161c' : '#f7f2e9',
+    backgroundColor: windowBackground(),
     icon: devIcon,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
@@ -65,8 +70,6 @@ function createWindow() {
 async function startServices(): Promise<Services> {
   await loadShellEnv();
   const env = createHostEnv();
-  const dataDir = process.env.KUMI_DATA_DIR ?? join(env.home, '.kumi');
-  const settings = new SettingsStore(dataDir);
   const state = new StateStore(dataDir);
   const backups = new BackupService(dataDir);
   const box = await createSafeStorageBox();
@@ -75,7 +78,13 @@ async function startServices(): Promise<Services> {
   return { env, dataDir, catalog, installer, state, backups, settings };
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  // Apply the saved appearance before the first window, so it opens in the right theme.
+  nativeTheme.themeSource = (await settings.get()).theme;
+  nativeTheme.on('updated', () => {
+    for (const win of BrowserWindow.getAllWindows()) win.setBackgroundColor(windowBackground());
+  });
+
   if (!isDev) {
     session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
       callback({ responseHeaders: { ...details.responseHeaders, 'Content-Security-Policy': [CSP] } });

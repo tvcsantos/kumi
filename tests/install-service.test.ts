@@ -7,16 +7,17 @@ import type { HostEnv } from '../src/main/clients/types';
 import { InstallService } from '../src/main/install/service';
 import { BackupService } from '../src/main/state/backups';
 import { StateStore } from '../src/main/state/store';
+import type { SecretBox } from '../src/main/secrets/secrets';
 
 let root: string;
 let env: HostEnv;
 let service: InstallService;
 let backups: BackupService;
 
-const fakeBox = {
-  available: () => true,
-  encrypt: (s: string) => Buffer.from(s).toString('base64'),
-  decrypt: (s: string) => Buffer.from(s, 'base64').toString(),
+const fakeBox: SecretBox = {
+  available: async () => true,
+  encrypt: async (s: string) => Buffer.from(s).toString('base64'),
+  decrypt: async (s: string) => Buffer.from(s, 'base64').toString(),
 };
 
 const spec: ServerSpec = {

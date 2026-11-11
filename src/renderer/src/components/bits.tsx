@@ -4,6 +4,7 @@ import type { RegistryServer } from '@shared/registry';
 import type { ClientId, DiffLine, ScopeRef } from '@shared/types';
 import iconDark from '../../../../build/icon-dark.svg';
 import iconLight from '../../../../build/icon-light.svg';
+import { useDarkMode } from '../lib/hooks';
 import { cx } from './ui';
 
 const CLIENT_STYLE: Record<ClientId, { short: string; color: string }> = {
@@ -50,7 +51,7 @@ export function scopeLabel(scope: ScopeRef): string {
 /** The registry icon when there is one (preferring the right theme), else a monogram. */
 export function ServerIcon({ server, size = 40 }: { server: Pick<RegistryServer, 'name' | 'title' | 'icons'>; size?: number }) {
   const [failed, setFailed] = useState(false);
-  const dark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+  const dark = useDarkMode();
   const icon =
     server.icons?.find((i) => i.theme === (dark ? 'dark' : 'light')) ?? server.icons?.find((i) => !i.theme) ?? server.icons?.[0];
   const src = icon?.src?.startsWith('https://') ? icon.src : undefined;

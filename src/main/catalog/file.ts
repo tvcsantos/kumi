@@ -41,12 +41,12 @@ export class FileRegistry implements RegistrySource {
   constructor(
     private readonly http: HttpCache,
     private readonly location: string,
-    private readonly token?: string,
+    private readonly headers?: Record<string, string>,
   ) {}
 
   private async entries(noCache = false): Promise<RegistryServerResponse[]> {
     if (isUrl(this.location)) {
-      return parseServerList(await this.http.getJson<unknown>(this.location, { token: this.token, noCache, notFound: 'Registry file not found' }));
+      return parseServerList(await this.http.getJson<unknown>(this.location, { headers: this.headers, noCache, notFound: 'Registry file not found' }));
     }
     const { mtimeMs } = await fs.stat(this.location).catch((e: NodeJS.ErrnoException) => {
       throw new Error(e.code === 'ENOENT' ? `Registry file not found: ${this.location}` : e.message);

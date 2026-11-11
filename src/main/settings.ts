@@ -2,7 +2,7 @@ import { join } from 'node:path';
 import type { Settings } from '@shared/api';
 import { atomicWrite, readTextOrNull } from './config-io/fs';
 
-const DEFAULTS: Settings = { defaultSecretsMode: 'inline' };
+const DEFAULTS: Settings = { defaultSecretsMode: 'inline', theme: 'system', setupDone: false };
 
 export class SettingsStore {
   private readonly path: string;

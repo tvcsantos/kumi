@@ -172,7 +172,7 @@ export class InstallService {
       configPath: w.configPath,
       source: request.source,
       values,
-      encryptedSecrets: hasSecrets && this.secrets.available() ? this.secrets.encrypt(JSON.stringify(secret)) : undefined,
+      encryptedSecrets: hasSecrets && (await this.secrets.available()) ? await this.secrets.encrypt(JSON.stringify(secret)) : undefined,
       secretsMode: request.secretsMode,
       installedAt: existing?.installedAt ?? now,
       updatedAt: now,
@@ -184,9 +184,9 @@ export class InstallService {
     const record = await this.state.findById(recordId);
     if (!record) throw new Error('Install record not found');
     let secret: Record<string, string> = {};
-    if (record.encryptedSecrets && this.secrets.available()) {
+    if (record.encryptedSecrets && (await this.secrets.available())) {
       try {
-        secret = JSON.parse(this.secrets.decrypt(record.encryptedSecrets));
+        secret = JSON.parse(await this.secrets.decrypt(record.encryptedSecrets));
       } catch {
         secret = {};
       }
