@@ -5,6 +5,12 @@
   "description": "MCP marketplace: browse MCP servers and install them into Claude, VS Code, Cursor, Codex and GitHub Copilot.",
   "author": "Tiago Santos <tvcsantos@gmail.com>",
   "license": "MIT",
+  "homepage": "https://github.com/tvcsantos/kumi",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tvcsantos/kumi.git"
+  },
+  "bugs": "https://github.com/tvcsantos/kumi/issues",
   "private": true,
   "main": "./out/main/index.js",
   "scripts": {

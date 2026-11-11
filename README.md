@@ -120,6 +120,25 @@ To try the app without touching your real configs, point it at a throwaway home:
 env -u CLAUDE_CONFIG_DIR -u CODEX_HOME -u XDG_CONFIG_HOME -u PI_CODING_AGENT_DIR HOME=/tmp/kumi-home KUMI_DATA_DIR=/tmp/kumi-home/.kumi npm run dev
 ```
 
+## Releasing
+
+Releases are built by [`.github/workflows/release.yml`](.github/workflows/release.yml) when a version tag is pushed:
+
+```bash
+npm version minor          # or patch / major / 0.2.0-rc.1; commits and tags vX.Y.Z
+git push --follow-tags
+```
+
+The workflow checks the tag matches `package.json`, runs the CI checks, packages macOS (dmg + zip, x64 and arm64), Windows (NSIS) and Linux (AppImage + deb), then publishes a GitHub release with generated notes. Tags with a suffix such as `-rc.1` become pre-releases.
+
+Code signing is optional. Without these repository secrets the installers are built unsigned:
+
+| Secret | Purpose |
+| --- | --- |
+| `MAC_CSC_LINK`, `MAC_CSC_KEY_PASSWORD` | Developer ID Application certificate (`.p12`, base64) and its password |
+| `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID` | Notarization (needs the macOS certificate too) |
+| `WIN_CSC_LINK`, `WIN_CSC_KEY_PASSWORD` | Windows code signing certificate (`.pfx`, base64) and its password |
+
 ## Layout
 
 ```

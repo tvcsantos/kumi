@@ -8,7 +8,13 @@ files:
   - package.json
 mac:
   category: public.app-category.developer-tools
-  target: [dmg, zip]
+  # Always name the arch, so the Intel and Apple silicon downloads are told apart.
+  artifactName: ${productName}-${version}-${arch}.${ext}
+  target:
+    - target: dmg
+      arch: [x64, arm64]
+    - target: zip
+      arch: [x64, arm64]
 win:
   target: [nsis]
 linux:
@@ -17,6 +23,9 @@ linux:
 nsis:
   oneClick: false
   allowToChangeInstallationDirectory: true
+  # No spaces: GitHub renames uploaded assets with spaces, which would break
+  # the download URLs in latest.yml.
+  artifactName: ${productName}-Setup-${version}.${ext}
 publish:
   provider: github
   owner: tvcsantos
