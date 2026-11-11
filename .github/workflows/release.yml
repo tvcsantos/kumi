@@ -76,8 +76,11 @@ jobs:
           case "$RUNNER_OS" in
             macOS)
               if [ -z "$MAC_CSC_LINK" ]; then
-                set_env CSC_IDENTITY_AUTO_DISCOVERY false
-                echo "::warning::MAC_CSC_LINK is not set: the macOS build is unsigned and not notarized."
+                # Ad-hoc sign instead: Apple silicon refuses to run code without a
+                # valid signature. Hardened runtime only matters for notarization,
+                # which an ad-hoc build can't get.
+                set_env MAC_ADHOC_SIGN true
+                echo "::warning::MAC_CSC_LINK is not set: the macOS build is ad-hoc signed and not notarized."
                 exit 0
               fi
               set_env CSC_LINK "$MAC_CSC_LINK"
@@ -102,7 +105,14 @@ jobs:
 
       - run: npm run build
       # Publishing happens in the release job, once every platform has built.
-      - run: npx electron-builder --${{ matrix.platform }} --publish never
+      - name: Package
+        shell: bash
+        run: |
+          args=(--${{ matrix.platform }} --publish never)
+          if [ "${MAC_ADHOC_SIGN:-}" = true ]; then
+            args+=(-c.mac.identity=- -c.mac.hardenedRuntime=false)
+          fi
+          npx electron-builder "${args[@]}"
 
       - uses: actions/upload-artifact@v7
         with:

@@ -131,13 +131,19 @@ git push --follow-tags
 
 The workflow checks the tag matches `package.json`, runs the CI checks, packages macOS (dmg + zip, x64 and arm64), Windows (NSIS) and Linux (AppImage + deb), then publishes a GitHub release with generated notes. Tags with a suffix such as `-rc.1` become pre-releases.
 
-Code signing is optional. Without these repository secrets the installers are built unsigned:
+Code signing is optional. Without these repository secrets the Windows installer is unsigned and the macOS app is ad-hoc signed (enough to run on Apple silicon, but not trusted by Gatekeeper):
 
 | Secret | Purpose |
 | --- | --- |
 | `MAC_CSC_LINK`, `MAC_CSC_KEY_PASSWORD` | Developer ID Application certificate (`.p12`, base64) and its password |
 | `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID` | Notarization (needs the macOS certificate too) |
 | `WIN_CSC_LINK`, `WIN_CSC_KEY_PASSWORD` | Windows code signing certificate (`.pfx`, base64) and its password |
+
+To open an ad-hoc signed build after installing it, clear the quarantine flag:
+
+```bash
+xattr -dr com.apple.quarantine /Applications/Kumi.app
+```
 
 ## Layout
 
