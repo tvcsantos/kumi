@@ -254,6 +254,14 @@ describe('RegistryStore', () => {
     await expect(add(plain('X-Tenant', 'acme'))).resolves.toMatchObject({ headers: [plain('X-Tenant', 'acme')] });
   });
 
+  it('explains a keychain that reports itself available but fails to encrypt', async () => {
+    const store = new RegistryStore(root, { ...fakeBox, encrypt: async () => Promise.reject(new Error('Error while encrypting')) });
+    await expect(store.add({ name: 'Acme', kind: 'api', location: 'https://reg.acme.test', headers: [secret('Authorization', 'Bearer t')] })).rejects.toThrow(
+      /keychain isn't available/,
+    );
+    expect(await store.list()).toHaveLength(1);
+  });
+
   it('lets the official registry be turned off but not edited or removed', async () => {
     const store = new RegistryStore(root, fakeBox);
     expect((await store.update(OFFICIAL_REGISTRY_ID, { enabled: false })).enabled).toBe(false);

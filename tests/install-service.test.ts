@@ -90,6 +90,21 @@ describe('InstallService', () => {
     expect((await service.listInstalled()).entries.map((e) => e.clientId)).toEqual(['codex']);
   });
 
+  it('still records the install when the keychain fails to encrypt, just without the secrets', async () => {
+    // macOS can report the keychain available and then fail, e.g. when HOME has no login keychain.
+    const brokenBox: SecretBox = { ...fakeBox, encrypt: async () => Promise.reject(new Error('Error while encrypting')) };
+    service = new InstallService(env, new StateStore(join(root, 'data')), backups, brokenBox);
+
+    const results = await service.apply((await service.plan(request())).id);
+    expect(results.map((r) => [r.ok, r.error])).toEqual([
+      [true, undefined],
+      [true, undefined],
+    ]);
+    const record = (await service.listInstalled()).entries[0].record!;
+    expect(record.encryptedSecrets).toBeUndefined();
+    expect(await service.recordValues(record.id)).toEqual({ other: 'x' });
+  });
+
   it('refuses to overwrite servers it does not own unless asked', async () => {
     const path = join(env.home, '.cursor', 'mcp.json');
     await fs.mkdir(join(env.home, '.cursor'), { recursive: true });

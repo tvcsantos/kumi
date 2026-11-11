@@ -114,8 +114,12 @@ export class RegistryStore {
     r.headers = headers.map(({ name, secret, value }) => (secret ? { name, secret } : { name, secret, value }));
     const secrets = headers.filter((h) => h.secret);
     if (!secrets.length) return;
-    if (!(await this.box.available())) throw new Error("Can't store secret headers securely: the OS keychain isn't available.");
-    r.encryptedSecrets = await this.box.encrypt(JSON.stringify(Object.fromEntries(secrets.map((h) => [h.name, h.value]))));
+    const unavailable = new Error("Can't store secret headers securely: the OS keychain isn't available.");
+    if (!(await this.box.available())) throw unavailable;
+    // The keychain can report itself available and still fail to encrypt.
+    r.encryptedSecrets = await this.box.encrypt(JSON.stringify(Object.fromEntries(secrets.map((h) => [h.name, h.value])))).catch(() => {
+      throw unavailable;
+    });
   }
 
   /** The stored headers with their secret values decrypted. */

@@ -69,6 +69,22 @@ A desktop MCP marketplace. Browse MCP servers from the official [MCP Registry](h
       <p align="center"><b>Settings</b>: your registries, secrets default, and where each app keeps its config.</p>
     </td>
   </tr>
+  <tr>
+    <td width="50%">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/welcome-dark.png">
+        <img alt="Welcome: choose registries on first run" src="docs/screenshots/welcome.png">
+      </picture>
+      <p align="center"><b>Welcome</b>: on first run, add your own registries and choose whether to also search the official one.</p>
+    </td>
+    <td width="50%">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/registry-headers-dark.png">
+        <img alt="Add a registry with request headers" src="docs/screenshots/registry-headers.png">
+      </picture>
+      <p align="center"><b>Private registries</b>: send headers such as a token; secret values are stored encrypted.</p>
+    </td>
+  </tr>
 </table>
 
 Screenshots follow your GitHub theme (light or dark).

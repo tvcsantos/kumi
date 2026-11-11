@@ -163,7 +163,6 @@ export class InstallService {
         delete values[k];
       }
     }
-    const hasSecrets = Object.keys(secret).length > 0;
     return {
       id: existing?.id ?? randomUUID(),
       name: request.spec.name,
@@ -172,11 +171,25 @@ export class InstallService {
       configPath: w.configPath,
       source: request.source,
       values,
-      encryptedSecrets: hasSecrets && (await this.secrets.available()) ? await this.secrets.encrypt(JSON.stringify(secret)) : undefined,
+      encryptedSecrets: await this.encryptSecrets(secret),
       secretsMode: request.secretsMode,
       installedAt: existing?.installedAt ?? now,
       updatedAt: now,
     };
+  }
+
+  /**
+   * The secret form values, encrypted. Undefined when there are none or the keychain can't be used:
+   * the config is already written, so the install still counts; editing it later just asks for them again.
+   * The keychain can report itself available and still fail to encrypt, so a failure is treated the same way.
+   */
+  private async encryptSecrets(secret: Record<string, string>): Promise<string | undefined> {
+    if (Object.keys(secret).length === 0) return undefined;
+    try {
+      return (await this.secrets.available()) ? await this.secrets.encrypt(JSON.stringify(secret)) : undefined;
+    } catch {
+      return undefined;
+    }
   }
 
   /** Form values of an install, secrets included, for editing it. */
