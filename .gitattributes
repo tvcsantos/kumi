@@ -1,0 +1,6 @@
+# Normalize text files to LF in the repo.
+* text=auto
+
+# Test fixtures are compared byte-for-byte, so keep them LF on every platform
+# (Windows checkouts would otherwise convert them to CRLF).
+tests/fixtures/** text eol=lf

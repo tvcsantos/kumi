@@ -75,7 +75,7 @@ describe('claude-code', () => {
   });
 
   it('uses .mcp.json for project scope', () => {
-    expect(adapter.configPath({ home: '/h', vars: {} } as never, { kind: 'project', projectDir: '/repo' })).toBe('/repo/.mcp.json');
+    expect(adapter.configPath({ home: '/h', vars: {} } as never, { kind: 'project', projectDir: '/repo' })).toBe(join('/repo', '.mcp.json'));
   });
 });
 
@@ -127,6 +127,14 @@ describe('codex', () => {
     expect(parsed.mcp_servers.existing.env).toEqual({ CONTEXT7_API_KEY: 'sk-1' });
     expect(parsed.profiles).toEqual({ fast: { model: 'gpt-5-mini' } });
     expect(text).toContain('# Profiles below\n[profiles.fast]');
+  });
+
+  it('keeps CRLF line endings when the existing file uses them', () => {
+    const before = fixture('codex.toml').replace(/\n/g, '\r\n');
+    const { text } = adapter.upsert(before, stdio, user, mac);
+    expect(text.startsWith(before)).toBe(true);
+    expect(text.replace(/\r\n/g, '')).not.toContain('\n');
+    expect(adapter.remove(text, 'context7', user)).toBe(before);
   });
 
   it('maps remote headers to http_headers', () => {
@@ -181,8 +189,8 @@ describe('opencode', () => {
 
   it('uses ~/.config/opencode for user scope and opencode.json in the project', () => {
     const env = { home: '/h', xdgConfig: '/h/.config', vars: {} } as never;
-    expect(adapter.configPath(env, user)).toBe('/h/.config/opencode/opencode.json');
-    expect(adapter.configPath(env, { kind: 'project', projectDir: '/repo' })).toBe('/repo/opencode.json');
+    expect(adapter.configPath(env, user)).toBe(join('/h/.config', 'opencode', 'opencode.json'));
+    expect(adapter.configPath(env, { kind: 'project', projectDir: '/repo' })).toBe(join('/repo', 'opencode.json'));
   });
 });
 
@@ -200,8 +208,8 @@ describe('pi', () => {
   });
 
   it('uses the agent dir (honoring PI_CODING_AGENT_DIR) and .pi/mcp.json in the project', () => {
-    expect(adapter.configPath({ home: '/h', vars: {} } as never, user)).toBe('/h/.pi/agent/mcp.json');
-    expect(adapter.configPath({ home: '/h', vars: { PI_CODING_AGENT_DIR: '/pi' } } as never, user)).toBe('/pi/mcp.json');
-    expect(adapter.configPath({ home: '/h', vars: {} } as never, { kind: 'project', projectDir: '/repo' })).toBe('/repo/.pi/mcp.json');
+    expect(adapter.configPath({ home: '/h', vars: {} } as never, user)).toBe(join('/h', '.pi', 'agent', 'mcp.json'));
+    expect(adapter.configPath({ home: '/h', vars: { PI_CODING_AGENT_DIR: '/pi' } } as never, user)).toBe(join('/pi', 'mcp.json'));
+    expect(adapter.configPath({ home: '/h', vars: {} } as never, { kind: 'project', projectDir: '/repo' })).toBe(join('/repo', '.pi', 'mcp.json'));
   });
 });
