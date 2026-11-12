@@ -1,15 +1,19 @@
 # Installation
 
-Kumi runs on macOS, Windows and Linux. Download the latest build from the [releases page](https://github.com/tvcsantos/kumi/releases/latest).
+Kumi runs on macOS, Windows and Linux.
 
-| Platform | Download |
+## Download
+
+<DownloadCards repo="tvcsantos/kumi" />
+
+All installers are also on the [releases page](https://github.com/tvcsantos/kumi/releases/latest). Releases with a suffix such as `-rc.1` are pre-releases.
+
+| Platform | File |
 |---|---|
-| macOS (Apple silicon) | `Kumi-<version>-arm64.dmg` (or `.zip`) |
-| macOS (Intel) | `Kumi-<version>-x64.dmg` (or `.zip`) |
+| macOS (Apple silicon) | `Kumi-<version>-arm64.dmg` or `.zip` |
+| macOS (Intel) | `Kumi-<version>-x64.dmg` or `.zip` |
 | Windows | `Kumi-Setup-<version>.exe` |
-| Linux | `.AppImage` or `.deb` |
-
-Releases with a suffix such as `-rc.1` are pre-releases.
+| Linux | `Kumi-<version>.AppImage` or `kumi_<version>_amd64.deb` |
 
 ## macOS
 

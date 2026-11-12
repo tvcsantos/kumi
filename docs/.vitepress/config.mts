@@ -28,7 +28,7 @@ export default defineConfig({
       { text: 'Guide', link: '/guide/what-is-kumi', activeMatch: '/guide/' },
       { text: 'Reference', link: '/reference/apps', activeMatch: '/reference/' },
       { text: 'Contributing', link: '/contributing/development', activeMatch: '/contributing/' },
-      { text: 'Download', link: `${repo}/releases/latest` },
+      { text: 'Download', link: '/guide/installation#download' },
     ],
 
     sidebar: {

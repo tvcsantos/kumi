@@ -14,7 +14,7 @@ hero:
       link: /guide/what-is-kumi
     - theme: alt
       text: Download
-      link: https://github.com/tvcsantos/kumi/releases/latest
+      link: /guide/installation#download
     - theme: alt
       text: View on GitHub
       link: https://github.com/tvcsantos/kumi
