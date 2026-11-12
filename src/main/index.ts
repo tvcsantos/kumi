@@ -96,11 +96,7 @@ app.whenReady().then(async () => {
   // Show the window (and its splash screen) right away; reading the login shell's environment can take seconds.
   registerIpc(startServices());
   createWindow();
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
-  });
 });
 
-app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') app.quit();
-});
+// Closing the window quits the app on every platform, macOS included.
+app.on('window-all-closed', () => app.quit());
