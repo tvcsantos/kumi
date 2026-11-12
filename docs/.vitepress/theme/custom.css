@@ -1,0 +1,52 @@
+/* Kumi brand: the colors of the app icon (navy, cream, amber, teal, vermilion). */
+:root {
+  --kumi-navy: #1a2240;
+  --kumi-cream: #f7f2e9;
+  --kumi-amber: #f2b33d;
+  --kumi-teal: #4fbfbf;
+  --kumi-red: #e9553f;
+
+  --vp-c-brand-1: #2f7f7f;
+  --vp-c-brand-2: #3a9696;
+  --vp-c-brand-3: #4fbfbf;
+  --vp-c-brand-soft: rgba(79, 191, 191, 0.16);
+
+  --vp-c-bg: #fbf8f2;
+  --vp-c-bg-alt: #f3ede2;
+  --vp-c-bg-soft: #efe8db;
+
+  --vp-home-hero-name-color: transparent;
+  --vp-home-hero-name-background: linear-gradient(120deg, var(--kumi-red) 10%, var(--kumi-amber) 50%, var(--kumi-teal) 90%);
+  --vp-home-hero-image-background-image: linear-gradient(135deg, rgba(242, 179, 61, 0.45) 20%, rgba(79, 191, 191, 0.45) 80%);
+  --vp-home-hero-image-filter: blur(56px);
+}
+
+.dark {
+  --vp-c-brand-1: #6fd3d3;
+  --vp-c-brand-2: #4fbfbf;
+  --vp-c-brand-3: #3a9696;
+  --vp-c-brand-soft: rgba(79, 191, 191, 0.16);
+
+  --vp-c-bg: #14161c;
+  --vp-c-bg-alt: #101217;
+  --vp-c-bg-soft: #1c1f27;
+}
+
+/* Screenshots come in a light and a dark version; show the one that matches the theme. */
+.dark img.light-only,
+html:not(.dark) img.dark-only {
+  display: none;
+}
+
+.vp-doc img.shot {
+  border-radius: 10px;
+  border: 1px solid var(--vp-c-divider);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.08);
+  margin: 16px 0;
+}
+
+.VPHero .image-src {
+  max-width: 220px;
+  max-height: 220px;
+  border-radius: 48px;
+}

@@ -2,6 +2,8 @@
 
 A desktop MCP marketplace. Browse MCP servers from the official [MCP Registry](https://registry.modelcontextprotocol.io) and your own registries, fill in their settings, and install them into the AI tools you use. Kumi writes the correct config, in the correct format and location, for each one.
 
+**Documentation: [tvcsantos.github.io/kumi](https://tvcsantos.github.io/kumi/)**
+
 | App | Scopes | Config |
 |---|---|---|
 | Claude Desktop | global | `claude_desktop_config.json` (remote servers via `mcp-remote`) |
@@ -110,6 +112,13 @@ npm test           # unit + integration tests
 npm run typecheck
 npm run dist       # package installers with electron-builder
 npm run icon       # regenerate build/icon.png and build/icon.icns from build/icon.svg
+```
+
+The documentation site is a separate npm package in [`docs/`](docs) (VitePress):
+
+```bash
+npm --prefix docs install
+npm run docs:dev   # or: cd docs && npm run dev
 ```
 
 Kumi stores its state, backups and cache in `~/.kumi` (override with `KUMI_DATA_DIR`).
