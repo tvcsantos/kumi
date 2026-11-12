@@ -40,7 +40,7 @@ const toHeader = (r: HeaderRow): RegistryHeader => ({ name: r.name.trim(), secre
 const savedHeader = (h: RegistryHeader): RegistryHeader => ({ name: h.name, secret: h.secret, ...(h.secret ? {} : { value: h.value }) });
 
 /** Adds a registry, or edits one when `registry` is given. Kumi checks the registry answers before saving. */
-export function RegistryDialog({ registry, onClose }: { registry?: RegistryInfo; onClose: () => void }) {
+export function RegistryDialog({ registry, onClose, onAdded }: { registry?: RegistryInfo; onClose: () => void; onAdded?: () => void }) {
   const queryClient = useQueryClient();
   const [name, setName] = useState(registry?.name ?? '');
   const [kind, setKind] = useState<RegistryKind>(registry?.kind ?? 'api');
@@ -66,6 +66,7 @@ export function RegistryDialog({ registry, onClose }: { registry?: RegistryInfo;
       return api.registriesUpdate(registry.id, patch);
     },
     onSuccess: () => {
+      if (!registry) onAdded?.();
       for (const key of ['registries', 'catalog', 'server']) void queryClient.invalidateQueries({ queryKey: [key] });
       onClose();
     },

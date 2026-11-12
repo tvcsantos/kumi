@@ -150,7 +150,16 @@ export function Welcome() {
         </div>
       </div>
 
-      {dialog && <RegistryDialog registry={dialog.registry} onClose={() => setDialog(null)} />}
+      {dialog && (
+        <RegistryDialog
+          registry={dialog.registry}
+          onClose={() => setDialog(null)}
+          // Adding your own registry means you no longer rely on the official one, so it starts unticked.
+          onAdded={() => {
+            if (added.length === 0 && official?.enabled) toggleOfficial.mutate(false);
+          }}
+        />
+      )}
     </div>
   );
 }
