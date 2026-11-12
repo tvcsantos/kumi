@@ -4,6 +4,8 @@ A desktop MCP marketplace. Browse MCP servers from the official [MCP Registry](h
 
 **Documentation: [tvcsantos.github.io/kumi](https://tvcsantos.github.io/kumi/)**
 
+**Install on macOS:** `brew install --cask tvcsantos/kumi/kumi`, or grab an installer for macOS, Windows or Linux from the [latest release](https://github.com/tvcsantos/kumi/releases/latest).
+
 | App | Scopes | Config |
 |---|---|---|
 | Claude Desktop | global | `claude_desktop_config.json` (remote servers via `mcp-remote`) |

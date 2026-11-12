@@ -49,7 +49,7 @@ The keychain entry Kumi used is gone, for example after moving to a new machine.
 
 ## The macOS app "is damaged and can't be opened"
 
-The build isn't notarized. See [Installation](./installation#macos).
+The build isn't notarized. Installing with [Homebrew](./installation#homebrew) avoids this; for a `.dmg` install, see [Installation](./installation#disk-image).
 
 ## Starting fresh
 

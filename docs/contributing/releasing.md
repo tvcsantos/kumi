@@ -21,6 +21,10 @@ The workflow then:
 
 Tags with a suffix such as `-rc.1` become pre-releases. Re-running the workflow after a partial failure uploads to the existing release instead of failing.
 
+## Homebrew cask
+
+The macOS cask lives in [tvcsantos/homebrew-kumi](https://github.com/tvcsantos/homebrew-kumi) (`Casks/kumi.rb`). It isn't updated by the release workflow yet, so after each stable release bump `version` and both `sha256` values (arm64 and x64 `.dmg`) there. Pre-releases aren't published to the cask.
+
 ## Code signing
 
 Signing is optional. Without these repository secrets, the Windows installer is unsigned and the macOS app is ad-hoc signed: it runs on Apple silicon, but Gatekeeper doesn't trust it.

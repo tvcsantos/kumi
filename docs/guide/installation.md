@@ -17,10 +17,24 @@ All installers are also on the [releases page](https://github.com/tvcsantos/kumi
 
 ## macOS
 
+### Homebrew
+
+```bash
+brew install --cask tvcsantos/kumi/kumi
+```
+
+This installs Kumi into `/Applications` and picks the right build for your Mac. The cask clears the Gatekeeper quarantine flag after installing, so the app opens without the warning below. Upgrade with:
+
+```bash
+brew upgrade --cask kumi
+```
+
+### Disk image
+
 Open the `.dmg` and drag **Kumi** to **Applications**.
 
 ::: warning Unsigned builds
-A build released without an Apple Developer ID certificate is ad-hoc signed. It runs on Apple silicon, but Gatekeeper doesn't trust it and will say the app "is damaged" or "can't be opened". To open it, clear the quarantine flag once after installing:
+A build released without an Apple Developer ID certificate is ad-hoc signed. It runs on Apple silicon, but Gatekeeper doesn't trust it and will say the app "is damaged" or "can't be opened". To open it, clear the quarantine flag once after installing (Homebrew does this for you):
 
 ```bash
 xattr -dr com.apple.quarantine /Applications/Kumi.app
