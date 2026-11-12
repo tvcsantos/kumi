@@ -48,14 +48,23 @@ export interface ReleaseInfo {
 }
 
 export interface UpdateStatus {
-  /** `available` stays set if a later check fails, with `error` saying why. */
-  state: 'idle' | 'checking' | 'up-to-date' | 'available' | 'error';
+  /**
+   * `available` → `downloading` → `ready` for installs Kumi updates itself (`inApp`).
+   * A failed check or download keeps what an earlier one found, with `error` saying why.
+   */
+  state: 'idle' | 'checking' | 'up-to-date' | 'available' | 'downloading' | 'ready' | 'error';
   currentVersion: string;
   installKind: InstallKind;
+  /** Kumi downloads and installs updates itself; otherwise the user gets a link or `command`. */
+  inApp: boolean;
+  /** Why this install can't update itself, when the reason is worth telling the user. */
+  manualReason?: string;
   /** A shell command that updates this install, when a package manager owns it. */
   command?: string;
   /** The newest release on the chosen channel, once a check has succeeded. */
   latest?: ReleaseInfo;
+  /** Download progress, 0–1, while `downloading`. */
+  progress?: number;
   /** When the last check finished (ms since epoch). */
   checkedAt?: number;
   error?: string;
@@ -113,6 +122,10 @@ export interface KumiApi {
   updateCheck(): Promise<UpdateStatus>;
   /** Hides the update banner for this version until Kumi restarts. */
   updateDismiss(version: string): Promise<UpdateStatus>;
+  /** Downloads the latest release again after a failed download. */
+  updateDownload(): Promise<UpdateStatus>;
+  /** Quits, installs the downloaded update and starts the new version. */
+  updateRestart(): Promise<void>;
   copyText(text: string): Promise<void>;
 }
 
@@ -146,6 +159,8 @@ export const API_METHODS = [
   'updateStatus',
   'updateCheck',
   'updateDismiss',
+  'updateDownload',
+  'updateRestart',
   'copyText',
 ] as const satisfies readonly (keyof KumiApi)[];
 

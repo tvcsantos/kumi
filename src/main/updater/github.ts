@@ -1,4 +1,4 @@
-// Finds the newest Kumi release on GitHub for a channel.
+// Where Kumi's releases live, and finding the newest one for a channel.
 
 import { z } from 'zod';
 import type { ReleaseInfo, UpdateChannel } from '@shared/api';
@@ -6,12 +6,38 @@ import { networkReason, type Fetch } from '../catalog/http';
 import { compareVersions, parseVersion } from './version';
 
 export const RELEASES_URL = 'https://api.github.com/repos/tvcsantos/kumi/releases?per_page=20';
+export const DOWNLOAD_BASE = 'https://github.com/tvcsantos/kumi/releases/download';
+
+export interface ReleaseFeed {
+  /** A GitHub-style JSON list of releases. */
+  releasesUrl: string;
+  /** Release files are at `<downloadBase>/v<version>/<file>`. */
+  downloadBase: string;
+  /** Not GitHub: set by `KUMI_UPDATE_FEED`. */
+  custom: boolean;
+}
+
+/**
+ * GitHub, unless `KUMI_UPDATE_FEED` points somewhere else for testing updates end to end.
+ * That server answers `<feed>/releases` like GitHub's API and serves files at `<feed>/download/v<version>/<file>`.
+ */
+export function releaseFeed(env: NodeJS.ProcessEnv): ReleaseFeed {
+  const custom = env.KUMI_UPDATE_FEED?.replace(/\/+$/, '');
+  if (custom && /^https?:\/\//.test(custom)) return { releasesUrl: `${custom}/releases`, downloadBase: `${custom}/download`, custom: true };
+  return { releasesUrl: RELEASES_URL, downloadBase: DOWNLOAD_BASE, custom: false };
+}
+
+/** The URL of one file in a release. */
+export function releaseFileUrl(feed: ReleaseFeed, version: string, file: string): string {
+  if (!/^[\w.-]+$/.test(file)) throw new Error(`Unexpected file name in the release: ${file}`);
+  return `${feed.downloadBase}/v${encodeURIComponent(version)}/${file}`;
+}
 
 const TIMEOUT_MS = 20_000;
 
 const release = z.object({
   tag_name: z.string(),
-  html_url: z.url({ protocol: /^https$/ }),
+  html_url: z.url({ protocol: /^https?$/ }),
   name: z.string().nullish(),
   draft: z.boolean(),
   prerelease: z.boolean(),
@@ -22,10 +48,10 @@ const release = z.object({
  * The newest release on the channel, or null when there is none.
  * `stable` skips pre-releases; drafts and tags that aren't versions are always skipped.
  */
-export async function latestRelease(fetchImpl: Fetch, channel: UpdateChannel, userAgent: string): Promise<ReleaseInfo | null> {
+export async function latestRelease(fetchImpl: Fetch, channel: UpdateChannel, userAgent: string, url = RELEASES_URL): Promise<ReleaseInfo | null> {
   let res: Response;
   try {
-    res = await fetchImpl(RELEASES_URL, {
+    res = await fetchImpl(url, {
       signal: AbortSignal.timeout(TIMEOUT_MS),
       headers: { Accept: 'application/vnd.github+json', 'User-Agent': userAgent, 'X-GitHub-Api-Version': '2022-11-28' },
     });

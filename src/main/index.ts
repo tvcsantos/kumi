@@ -12,7 +12,10 @@ import { createSafeStorageBox } from './secrets/secrets';
 import { SettingsStore } from './settings';
 import { BackupService } from './state/backups';
 import { StateStore } from './state/store';
+import { createInstaller } from './updater/create';
+import { releaseFeed } from './updater/github';
 import { detectInstallKind } from './updater/install-kind';
+import { bundlePath } from './updater/mac-installer';
 import { UpdateService } from './updater/service';
 
 const isDev = !!process.env.ELECTRON_RENDERER_URL;
@@ -78,9 +81,20 @@ async function startServices(): Promise<Services> {
   const box = await createSafeStorageBox();
   const catalog = new Catalog(new RegistryStore(dataDir, box), new HttpCache(dataDir));
   const installer = new InstallService(env, state, backups, box);
+  const installKind = detectInstallKind({
+    platform: process.platform,
+    isPackaged: app.isPackaged,
+    env: process.env,
+    exists: existsSync,
+    appPath: process.platform === 'darwin' ? bundlePath(process.execPath) : undefined,
+    home: homedir(),
+  });
+  const feed = releaseFeed(process.env);
   const updates = new UpdateService({
     currentVersion: app.getVersion(),
-    installKind: detectInstallKind({ platform: process.platform, isPackaged: app.isPackaged, env: process.env, exists: existsSync }),
+    installKind,
+    installer: createInstaller(installKind, feed),
+    releasesUrl: feed.releasesUrl,
     settings: () => settings.get(),
   });
   updates.start();

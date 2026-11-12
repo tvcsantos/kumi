@@ -169,6 +169,12 @@ function createHandlers(s: Services): Handlers {
     updateStatus: async () => s.updates.get(),
     updateCheck: () => s.updates.check(),
     updateDismiss: async (version) => s.updates.dismiss(z.string().min(1).max(100).parse(version)),
+    updateDownload: () => s.updates.download(),
+    updateRestart: async () => {
+      if (s.updates.get().state !== 'ready') throw new Error('No update is ready to install');
+      // Answer the renderer first; quitting closes its window.
+      setImmediate(() => s.updates.restart());
+    },
     copyText: async (text) => clipboard.writeText(z.string().max(10_000).parse(text)),
   };
 }

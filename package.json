@@ -1,7 +1,7 @@
 {
   "name": "kumi",
   "productName": "Kumi",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "MCP marketplace: browse MCP servers and install them into Claude, VS Code, Cursor, Codex and GitHub Copilot.",
   "author": "Tiago Santos <tvcsantos@gmail.com>",
   "license": "MIT",
@@ -29,6 +29,8 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.32.2",
+    "electron-updater": "^6.8.11",
+    "js-yaml": "^4.3.2",
     "jsonc-parser": "^3.3.1",
     "smol-toml": "^1.9.1",
     "zod": "^4.6.7"
@@ -36,6 +38,7 @@
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.3",
     "@tanstack/react-query": "^5.105.0",
+    "@types/js-yaml": "^4.0.9",
     "@types/node": "^26.6.6",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
