@@ -5,6 +5,7 @@ import type { CatalogItem } from '@shared/registry';
 import { AppIcon } from './components/bits';
 import { InstallWizard, type WizardSource } from './components/InstallWizard';
 import { cx } from './components/ui';
+import { UpdateBanner } from './components/Updates';
 import { api } from './lib/api';
 import { useInstalled } from './lib/hooks';
 import { dismissSplash } from './lib/splash';
@@ -84,6 +85,7 @@ export function App() {
       <main ref={main} className="min-w-0 flex-1 overflow-y-auto">
         <div className="drag h-8" />
         <div className="mx-auto max-w-6xl px-8 pb-12">
+          <UpdateBanner />
           {/* Keep Discover mounted so search results and scroll survive opening a server. */}
           <div hidden={route.page !== 'discover'}>
             <Discover onOpen={(item) => go({ page: 'server', item })} />

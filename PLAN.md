@@ -310,7 +310,9 @@ kumi/
 - [ ] Update detection (new registry version → update across clients).
 - [x] GitHub Copilot CLI adapter. Use CLIs (`claude mcp`, `code --add-mcp`, `codex mcp`) when present.
 - [x] Remote-server bridging for stdio-only clients (`mcp-remote`).
-- [ ] Code signing, notarization, auto-update, release pipeline.
+- [x] Release pipeline (GitHub Releases + Homebrew cask).
+- [ ] Code signing, notarization.
+- [ ] App updates: see [§16](#16-app-updates).
 
 ### Phase 3: Power features
 - [ ] `kumi-run` secure-launch shim with OS keychain.
@@ -362,3 +364,30 @@ kumi/
 ## 15. Definition of done (MVP)
 
 A user on macOS, Windows, or Linux can open Kumi, search "github", click Install, tick Claude Code + Cursor + VS Code, paste a token, review the diff, and click Apply. Then the GitHub MCP server works in all three tools without the user touching a config file, and they can uninstall it from all three with one click, leaving their configs otherwise byte-identical.
+
+---
+
+## 16. App updates
+
+Releases go to GitHub with electron-builder's `latest.yml`, `latest-mac.yml`, `latest-linux.yml`, the mac `.zip`s and blockmaps, so an updater has what it needs. What shapes the design: there are **no signing certificates**. macOS builds are ad-hoc signed and not notarized, and Windows builds are unsigned.
+
+| Install | Update path |
+|---|---|
+| Windows NSIS (`.exe`) | In-app, via `electron-updater`. It skips signature checks when `publisherName` isn't set. A UAC prompt may appear for Program Files installs. |
+| Linux AppImage | In-app, via `electron-updater` (AppImageUpdater). |
+| Linux `.deb` | Notify only. Updating needs root, so Kumi links to the new `.deb`. |
+| macOS, DMG download | In-app, via a custom updater. Squirrel.Mac rejects ad-hoc signed apps, because the designated requirement is the cdhash, which changes every build. |
+| macOS, Homebrew cask | **Notify only, leave it to brew**. Kumi shows `brew upgrade --cask kumi` with a copy button. The cask keeps no `auto_updates`, so brew's version record stays correct. Detected by `Caskroom/kumi` under `/opt/homebrew` or `/usr/local`. |
+| Dev build, app run from the DMG or a read-only location | Notify only. |
+
+**Custom macOS updater.** Read `latest-mac.yml` and pick the zip for `process.arch`. Download it with `net`, which leaves no quarantine flag, and check the `sha512`. Unzip with `ditto -x -k` into a temp dir. When the user quits or clicks "Restart to update", a detached script waits for Kumi to exit, swaps `Kumi.app` (keeping the old copy until the swap succeeds) and relaunches it. Refuse when the app is translocated or its folder isn't writable. Integrity rests on HTTPS to GitHub plus the yml hash, the same trust as the first download. With an Apple Developer ID, drop this and use electron-updater's standard path.
+
+**Never restart on its own.** Kumi edits config files, so it must not quit in the middle of the install wizard. Updates install on quit or when the user clicks "Restart to update".
+
+### Phases
+- [x] **1. Check and notify, everywhere.** `src/main/updater/` checks GitHub Releases on startup and every 6 hours (packaged builds only). Settings: `autoCheckUpdates` (on) and `updateChannel` (`stable` / `prerelease`, since `-rc` tags become prereleases). About has "Check for updates". A dismissible banner offers release notes plus Download (opens the release page) or the brew command.
+- [ ] **2. In-app on Windows and AppImage.** `electron-updater` behind the same service. Download in the background, then "Restart to update" with `autoInstallOnAppQuit`.
+- [ ] **3. Custom macOS updater** (described above), for non-Homebrew installs.
+- [ ] Release workflow bumps the Homebrew tap (version and both hashes), so brew users get updates as soon as releases ship.
+
+**Testing.** Unit tests cover version comparison, channel selection, install-kind detection and the state machine. For a real run end to end, use `dev-app-update.yml` + `forceDevUpdateConfig`, or a dev-only `KUMI_UPDATE_URL` that points at a local server hosting a newer test build.

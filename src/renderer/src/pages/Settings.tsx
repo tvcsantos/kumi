@@ -2,10 +2,11 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CheckCircle2, CircleDashed, FileCode, FileJson, FolderSearch, Globe, History, Lock, Monitor, Moon, Pencil, Plus, Sun, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import type { RegistryInfo } from '@shared/registry';
-import type { Settings as SettingsData, ThemeSetting } from '@shared/api';
+import type { Settings as SettingsData, ThemeSetting, UpdateChannel } from '@shared/api';
 import type { SecretsMode } from '@shared/types';
 import { ClientMark } from '../components/bits';
 import { RegistryDialog } from '../components/RegistryDialog';
+import { useCheckForUpdates } from '../components/Updates';
 import { Badge, Button, cx, PageHeader, Select, Spinner } from '../components/ui';
 import { api, errorMessage } from '../lib/api';
 import { useRegistries } from '../lib/hooks';
@@ -144,6 +145,7 @@ export function Settings() {
     onSuccess: (s) => queryClient.setQueryData(['settings'], s),
     onError: () => void queryClient.invalidateQueries({ queryKey: ['settings'] }),
   });
+  const checkUpdates = useCheckForUpdates();
   const restore = useMutation({
     mutationFn: api.backupsRestore,
     onSuccess: () => {
@@ -172,6 +174,28 @@ export function Settings() {
           <option value="client-native">Use the app's secure storage where available (VS Code)</option>
         </Select>
         {save.error && <p className="mt-2 text-xs text-danger">{errorMessage(save.error)}</p>}
+      </Section>
+
+      <Section title="Updates" description="Kumi asks GitHub for new releases when it starts and every few hours.">
+        <label className="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            className="size-4 accent-accent"
+            checked={settings.data?.autoCheckUpdates ?? true}
+            onChange={(e) => save.mutate({ autoCheckUpdates: e.target.checked })}
+          />
+          Check for updates automatically
+        </label>
+        <Select
+          value={settings.data?.updateChannel ?? 'stable'}
+          // Look again right away, so the banner and About match the new channel.
+          onChange={(e) => save.mutate({ updateChannel: e.target.value as UpdateChannel }, { onSuccess: () => checkUpdates.mutate() })}
+          className="mt-3 max-w-md"
+          aria-label="Update channel"
+        >
+          <option value="stable">Stable releases</option>
+          <option value="prerelease">Stable releases and release candidates</option>
+        </Select>
       </Section>
 
       <Section title="Apps" description="Where each app keeps its MCP configuration on this machine.">

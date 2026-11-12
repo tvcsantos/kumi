@@ -1,7 +1,7 @@
 // IPC handlers. Every argument from the renderer is validated before it reaches a service.
 
 import { isAbsolute } from 'node:path';
-import { app, BrowserWindow, dialog, ipcMain, nativeTheme, shell } from 'electron';
+import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeTheme, shell } from 'electron';
 import { z } from 'zod';
 import { API_METHODS, channel, type IpcResult, type KumiApi } from '@shared/api';
 import { CLIENT_IDS, type ClientInfo } from '@shared/types';
@@ -14,6 +14,7 @@ import { checkRuntimes } from './runtime/detect';
 import type { SettingsStore } from './settings';
 import type { BackupService } from './state/backups';
 import type { StateStore } from './state/store';
+import type { UpdateService } from './updater/service';
 
 const absPath = z.string().min(1).refine(isAbsolute, 'Must be an absolute path');
 const clientId = z.enum(CLIENT_IDS);
@@ -51,6 +52,8 @@ const settingsPatch = z.object({
   defaultSecretsMode: z.enum(['inline', 'client-native']).optional(),
   theme: z.enum(['system', 'light', 'dark']).optional(),
   setupDone: z.boolean().optional(),
+  autoCheckUpdates: z.boolean().optional(),
+  updateChannel: z.enum(['stable', 'prerelease']).optional(),
 });
 const registryDraft = z.object({
   name: z.string().trim().min(1, 'Give the registry a name').max(60),
@@ -71,6 +74,7 @@ export interface Services {
   state: StateStore;
   backups: BackupService;
   settings: SettingsStore;
+  updates: UpdateService;
 }
 
 type Handlers = { [K in keyof KumiApi]: (...args: unknown[]) => ReturnType<KumiApi[K]> };
@@ -162,6 +166,10 @@ function createHandlers(s: Services): Handlers {
       nativeTheme.themeSource = next.theme;
       return next;
     },
+    updateStatus: async () => s.updates.get(),
+    updateCheck: () => s.updates.check(),
+    updateDismiss: async (version) => s.updates.dismiss(z.string().min(1).max(100).parse(version)),
+    copyText: async (text) => clipboard.writeText(z.string().max(10_000).parse(text)),
   };
 }
 

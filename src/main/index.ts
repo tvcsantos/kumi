@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { app, BrowserWindow, nativeTheme, session, shell } from 'electron';
@@ -11,6 +12,8 @@ import { createSafeStorageBox } from './secrets/secrets';
 import { SettingsStore } from './settings';
 import { BackupService } from './state/backups';
 import { StateStore } from './state/store';
+import { detectInstallKind } from './updater/install-kind';
+import { UpdateService } from './updater/service';
 
 const isDev = !!process.env.ELECTRON_RENDERER_URL;
 const dataDir = process.env.KUMI_DATA_DIR ?? join(homedir(), '.kumi');
@@ -75,7 +78,13 @@ async function startServices(): Promise<Services> {
   const box = await createSafeStorageBox();
   const catalog = new Catalog(new RegistryStore(dataDir, box), new HttpCache(dataDir));
   const installer = new InstallService(env, state, backups, box);
-  return { env, dataDir, catalog, installer, state, backups, settings };
+  const updates = new UpdateService({
+    currentVersion: app.getVersion(),
+    installKind: detectInstallKind({ platform: process.platform, isPackaged: app.isPackaged, env: process.env, exists: existsSync }),
+    settings: () => settings.get(),
+  });
+  updates.start();
+  return { env, dataDir, catalog, installer, state, backups, settings, updates };
 }
 
 app.whenReady().then(async () => {

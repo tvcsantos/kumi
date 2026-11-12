@@ -24,6 +24,43 @@ export interface Settings {
   theme: ThemeSetting;
   /** The first-run welcome screen has been completed. */
   setupDone: boolean;
+  /** Check GitHub for a newer Kumi on startup and every few hours. */
+  autoCheckUpdates: boolean;
+  /** `prerelease` also offers release candidates. */
+  updateChannel: UpdateChannel;
+}
+
+export type UpdateChannel = 'stable' | 'prerelease';
+
+/**
+ * How this copy of Kumi was installed, which decides how it updates.
+ * `homebrew` is left to `brew upgrade`; `dev` is an unpackaged build.
+ */
+export type InstallKind = 'homebrew' | 'mac' | 'windows' | 'appimage' | 'linux-package' | 'dev';
+
+export interface ReleaseInfo {
+  version: string;
+  /** The GitHub release page: notes and every download. */
+  url: string;
+  name?: string;
+  publishedAt?: string;
+  prerelease: boolean;
+}
+
+export interface UpdateStatus {
+  /** `available` stays set if a later check fails, with `error` saying why. */
+  state: 'idle' | 'checking' | 'up-to-date' | 'available' | 'error';
+  currentVersion: string;
+  installKind: InstallKind;
+  /** A shell command that updates this install, when a package manager owns it. */
+  command?: string;
+  /** The newest release on the chosen channel, once a check has succeeded. */
+  latest?: ReleaseInfo;
+  /** When the last check finished (ms since epoch). */
+  checkedAt?: number;
+  error?: string;
+  /** The banner for `latest` was dismissed this session. */
+  dismissed: boolean;
 }
 
 export interface AppInfo {
@@ -71,6 +108,12 @@ export interface KumiApi {
   openExternal(url: string): Promise<void>;
   settingsGet(): Promise<Settings>;
   settingsSet(patch: Partial<Settings>): Promise<Settings>;
+  updateStatus(): Promise<UpdateStatus>;
+  /** Checks GitHub now, whatever the settings say. */
+  updateCheck(): Promise<UpdateStatus>;
+  /** Hides the update banner for this version until Kumi restarts. */
+  updateDismiss(version: string): Promise<UpdateStatus>;
+  copyText(text: string): Promise<void>;
 }
 
 export const API_METHODS = [
@@ -100,6 +143,10 @@ export const API_METHODS = [
   'openExternal',
   'settingsGet',
   'settingsSet',
+  'updateStatus',
+  'updateCheck',
+  'updateDismiss',
+  'copyText',
 ] as const satisfies readonly (keyof KumiApi)[];
 
 export type IpcResult<T> = { ok: true; value: T } | { ok: false; error: string };

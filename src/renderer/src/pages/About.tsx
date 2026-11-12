@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { BookOpen, Code2, ExternalLink, Library } from 'lucide-react';
 import { AppIcon, ClientMark } from '../components/bits';
 import { Badge, Button } from '../components/ui';
+import { UpdateCard } from '../components/Updates';
 import { api, errorMessage } from '../lib/api';
 
 const LINKS = [
@@ -75,6 +76,10 @@ export function About() {
           </ul>
         </Card>
       </div>
+
+      <Card title="Updates">
+        <UpdateCard />
+      </Card>
 
       <Card title="Details">
         <dl className="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-1.5">
