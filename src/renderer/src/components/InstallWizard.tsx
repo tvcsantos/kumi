@@ -73,6 +73,12 @@ function Steps({ current }: { current: Step }) {
   );
 }
 
+/** What "Test connection" is doing; a remote server may open the browser to sign in. */
+export function testingLabel(spec: ServerSpec | undefined, firstRun = false): string {
+  if (spec && spec.transport !== 'stdio') return 'Connecting… If your browser opens, sign in there to finish.';
+  return firstRun ? 'Starting the server… (first run may download it)' : 'Starting the server…';
+}
+
 export function HealthPanel({ result }: { result: HealthResult }) {
   if (!result.ok) {
     return (
@@ -384,7 +390,7 @@ export function InstallWizard({ source, onClose, onViewInstalled }: { source: Wi
             </details>
           )}
           {health && <HealthPanel result={health} />}
-          {test.isPending && <Spinner label="Starting the server… (first run may download it)" />}
+          {test.isPending && <Spinner label={testingLabel(spec, true)} />}
         </div>
       )}
 
@@ -560,7 +566,7 @@ export function InstallWizard({ source, onClose, onViewInstalled }: { source: Wi
             );
           })}
           {health && <HealthPanel result={health} />}
-          {test.isPending && <Spinner label="Starting the server…" />}
+          {test.isPending && <Spinner label={testingLabel(spec)} />}
         </div>
       )}
     </Modal>

@@ -3,7 +3,7 @@ import { AlertTriangle, ChevronDown, ChevronRight, FileCode, FolderPlus, Layers,
 import { useState } from 'react';
 import type { HealthResult, InstalledEntry, InstallTarget, ServerSpec } from '@shared/types';
 import { ClientMark, scopeLabel } from '../components/bits';
-import { HealthPanel, type WizardSource } from '../components/InstallWizard';
+import { HealthPanel, testingLabel, type WizardSource } from '../components/InstallWizard';
 import { Badge, Button, Callout, Empty, PageHeader, Spinner } from '../components/ui';
 import { api, errorMessage } from '../lib/api';
 import { OFFICIAL_REGISTRY_ID } from '@shared/registry';
@@ -123,7 +123,7 @@ function GroupRow({ group, onEdit }: { group: Group; onEdit: (source: WizardSour
 
       {(health || error || test.isPending) && (
         <div className="space-y-2 px-4 pb-3">
-          {test.isPending && <Spinner label="Starting the server…" />}
+          {test.isPending && <Spinner label={testingLabel(rep.spec)} />}
           {health && <HealthPanel result={health} />}
           {error && (
             <Callout tone="danger">

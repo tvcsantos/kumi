@@ -217,7 +217,7 @@ Users' config files hold hand-tuned state. Breaking them destroys trust.
 - For remote: connect with Streamable HTTP (fall back to SSE) and send headers.
 - Show the tool list, server info and version, and errors with friendly hints ("401: check your API key", "npx not found").
 - Warn clearly that this **runs the server's code locally**.
-- OAuth-based remote servers: v1 shows "auth happens in the client". Later, Kumi could support the MCP OAuth flow for testing.
+- OAuth-based remote servers: Test connection runs the MCP OAuth flow (discovery, dynamic client registration, PKCE, browser sign-in with a loopback redirect). Tokens stay in memory for the app session.
 
 ---
 
