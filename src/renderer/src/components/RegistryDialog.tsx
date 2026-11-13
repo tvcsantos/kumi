@@ -131,7 +131,7 @@ export function RegistryDialog({ registry, onClose, onAdded }: { registry?: Regi
                 aria-label="Header name"
                 value={r.name}
                 onChange={(e) => setRow(r.key, { name: e.target.value })}
-                placeholder="Authorization"
+                placeholder="Name"
                 className="min-w-0 basis-1/3 font-mono"
               />
               <Input
@@ -141,7 +141,7 @@ export function RegistryDialog({ registry, onClose, onAdded }: { registry?: Regi
                 spellCheck={false}
                 value={r.value}
                 onChange={(e) => setRow(r.key, { value: e.target.value })}
-                placeholder={keepsSaved(r) ? 'Keep saved value' : r.saved?.secret ? 'Enter a new value' : 'Bearer …'}
+                placeholder={keepsSaved(r) ? 'Keep saved value' : r.saved?.secret ? 'Enter a new value' : 'Value'}
                 className="min-w-0 flex-1 font-mono"
               />
               <label className="flex shrink-0 items-center gap-1.5 text-xs text-muted" title="Secret values are stored encrypted and hidden once saved">
