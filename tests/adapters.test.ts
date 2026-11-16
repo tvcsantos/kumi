@@ -213,3 +213,22 @@ describe('pi', () => {
     expect(adapter.configPath({ home: '/h', vars: {} } as never, { kind: 'project', projectDir: '/repo' })).toBe(join('/repo', '.pi', 'mcp.json'));
   });
 });
+
+describe('junie', () => {
+  const adapter = getAdapter('junie');
+
+  it('writes plain mcpServers entries without a type', () => {
+    const { text } = adapter.upsert('', remote, user, mac);
+    expect((parseJson(text) as { mcpServers: Record<string, unknown> }).mcpServers.remote).toEqual({ url: remote.url, headers: remote.headers });
+  });
+
+  it('bridges SSE servers', () => {
+    const { warnings } = adapter.upsert('', { ...remote, transport: 'sse' }, user, mac);
+    expect(warnings[0]).toMatch(/mcp-remote/);
+  });
+
+  it('uses ~/.junie/mcp/mcp.json and .junie/mcp/mcp.json in the project', () => {
+    expect(adapter.configPath({ home: '/h', vars: {} } as never, user)).toBe(join('/h', '.junie', 'mcp', 'mcp.json'));
+    expect(adapter.configPath({ home: '/h', vars: {} } as never, { kind: 'project', projectDir: '/repo' })).toBe(join('/repo', '.junie', 'mcp', 'mcp.json'));
+  });
+});

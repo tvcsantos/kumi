@@ -1,6 +1,6 @@
 # Supported apps
 
-Kumi writes MCP servers into eight apps. This page lists, for each one, where its config lives, its format, and an example of what Kumi writes.
+Kumi writes MCP servers into nine apps. This page lists, for each one, where its config lives, its format, and an example of what Kumi writes.
 
 The examples install [Context7](https://context7.com) two ways: as a local npm package with an API key, and as a hosted server with an `Authorization` header.
 
@@ -16,6 +16,7 @@ The examples install [Context7](https://context7.com) two ways: as a local npm p
 | [GitHub Copilot CLI](#github-copilot-cli) | global | JSON | `mcpServers` |
 | [OpenCode](#opencode) | global, project | JSONC | `mcp.servers` |
 | [Pi](#pi) | global, project | JSON | `mcpServers` |
+| [Junie](#junie) | global, project | JSON | `mcpServers` |
 
 ## Transports
 
@@ -29,6 +30,7 @@ The examples install [Context7](https://context7.com) two ways: as a local npm p
 | GitHub Copilot CLI | ✅ | ✅ | ✅ |
 | OpenCode | ✅ | ✅ | via `mcp-remote` |
 | Pi | ✅ | ✅ | via `mcp-remote` |
+| Junie | ✅ | ✅ | via `mcp-remote` |
 
 **via `mcp-remote`** means the app can't connect to that kind of server from its config file, so Kumi runs [`mcp-remote`](https://www.npmjs.com/package/mcp-remote), a stdio bridge, in its place. Headers are passed through environment variables named `MCP_HEADER_<NAME>`, which `mcp-remote` expands itself, so values with spaces need no quoting. The bridge needs Node.js.
 
@@ -328,6 +330,43 @@ OpenCode takes the command and its arguments as one array, and environment varia
 | **Detected by** | `pi` on `PATH`, or the agent folder |
 
 Pi's built-in MCP support (Pi 0.99 and later) picks stdio when there's a `command` and Streamable HTTP when there's a `url`, so Kumi writes no `type`. Pi rejects the legacy SSE transport, so SSE servers go through `mcp-remote`.
+
+::: code-group
+
+```json [Local package]
+{
+  "mcpServers": {
+    "context7": {
+      "command": "npx",
+      "args": ["-y", "@upstash/context7-mcp@4.4.4"],
+      "env": { "CONTEXT7_API_KEY": "…" }
+    }
+  }
+}
+```
+
+```json [Hosted]
+{
+  "mcpServers": {
+    "context7": {
+      "url": "https://mcp.context7.com/mcp",
+      "headers": { "Authorization": "Bearer …" }
+    }
+  }
+}
+```
+
+:::
+
+## Junie
+
+| | |
+|---|---|
+| **Global** | `~/.junie/mcp/mcp.json` |
+| **Project** | `<project>/.junie/mcp/mcp.json`. Junie loads it only for trusted projects. |
+| **Detected by** | `junie` on `PATH`, or `~/.junie` |
+
+JetBrains' Junie reads the same files from the Junie CLI and the Junie plugin in JetBrains IDEs, so one install covers both. An entry with a `command` runs locally and one with a `url` connects over HTTP, so Kumi writes no `type`. Junie doesn't document SSE, so SSE servers go through `mcp-remote`. Use `/mcp` in Junie to check or reconnect a server.
 
 ::: code-group
 
