@@ -1,6 +1,6 @@
 // Domain types shared by the main process and the renderer.
 
-export const CLIENT_IDS = ['claude-desktop', 'claude-code', 'vscode', 'cursor', 'codex', 'copilot-cli', 'opencode', 'pi', 'junie'] as const;
+export const CLIENT_IDS = ['claude-desktop', 'claude-code', 'vscode', 'cursor', 'codex', 'copilot-cli', 'opencode', 'pi', 'junie', 'jetbrains-air'] as const;
 export type ClientId = (typeof CLIENT_IDS)[number];
 
 export type ScopeKind = 'user' | 'project' | 'local';

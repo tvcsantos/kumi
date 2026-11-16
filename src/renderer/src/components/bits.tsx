@@ -18,6 +18,7 @@ const CLIENT_STYLE: Record<ClientId, { short: string; color: string }> = {
   opencode: { short: 'OC', color: '#6f6259' },
   pi: { short: 'Pi', color: '#3b6fd4' },
   junie: { short: 'Ju', color: '#3d9a50' },
+  'jetbrains-air': { short: 'Ai', color: '#7b5cff' },
 };
 
 /** Kumi's own icon, in the variant that suits the current theme. */

@@ -17,6 +17,7 @@ A desktop MCP marketplace. Browse MCP servers from the official [MCP Registry](h
 | OpenCode | global, project (`opencode.json`) | `~/.config/opencode/opencode.json` (SSE servers via `mcp-remote`) |
 | Pi | global, project (`.pi/mcp.json`) | `~/.pi/agent/mcp.json` (honors `PI_CODING_AGENT_DIR`; SSE servers via `mcp-remote`) |
 | Junie (JetBrains) | global, project (`.junie/mcp/mcp.json`) | `~/.junie/mcp/mcp.json` (CLI and IDE plugin; SSE servers via `mcp-remote`) |
+| Air in JetBrains IDEs | global | `~/.jetbrains/mcp/mcp.json` (SSE servers via `mcp-remote`) |
 
 ## Showcase
 

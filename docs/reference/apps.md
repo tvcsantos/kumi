@@ -1,6 +1,6 @@
 # Supported apps
 
-Kumi writes MCP servers into nine apps. This page lists, for each one, where its config lives, its format, and an example of what Kumi writes.
+Kumi writes MCP servers into ten apps. This page lists, for each one, where its config lives, its format, and an example of what Kumi writes.
 
 The examples install [Context7](https://context7.com) two ways: as a local npm package with an API key, and as a hosted server with an `Authorization` header.
 
@@ -17,6 +17,7 @@ The examples install [Context7](https://context7.com) two ways: as a local npm p
 | [OpenCode](#opencode) | global, project | JSONC | `mcp.servers` |
 | [Pi](#pi) | global, project | JSON | `mcpServers` |
 | [Junie](#junie) | global, project | JSON | `mcpServers` |
+| [Air in JetBrains IDEs](#air-in-jetbrains-ides) | global | JSON | `mcpServers` |
 
 ## Transports
 
@@ -31,6 +32,7 @@ The examples install [Context7](https://context7.com) two ways: as a local npm p
 | OpenCode | ✅ | ✅ | via `mcp-remote` |
 | Pi | ✅ | ✅ | via `mcp-remote` |
 | Junie | ✅ | ✅ | via `mcp-remote` |
+| Air in JetBrains IDEs | ✅ | ✅ | via `mcp-remote` |
 
 **via `mcp-remote`** means the app can't connect to that kind of server from its config file, so Kumi runs [`mcp-remote`](https://www.npmjs.com/package/mcp-remote), a stdio bridge, in its place. Headers are passed through environment variables named `MCP_HEADER_<NAME>`, which `mcp-remote` expands itself, so values with spaces need no quoting. The bridge needs Node.js.
 
@@ -367,6 +369,44 @@ Pi's built-in MCP support (Pi 0.99 and later) picks stdio when there's a `comman
 | **Detected by** | `junie` on `PATH`, or `~/.junie` |
 
 JetBrains' Junie reads the same files from the Junie CLI and the Junie plugin in JetBrains IDEs, so one install covers both. An entry with a `command` runs locally and one with a `url` connects over HTTP, so Kumi writes no `type`. Junie doesn't document SSE, so SSE servers go through `mcp-remote`. Use `/mcp` in Junie to check or reconnect a server.
+
+::: code-group
+
+```json [Local package]
+{
+  "mcpServers": {
+    "context7": {
+      "command": "npx",
+      "args": ["-y", "@upstash/context7-mcp@4.4.4"],
+      "env": { "CONTEXT7_API_KEY": "…" }
+    }
+  }
+}
+```
+
+```json [Hosted]
+{
+  "mcpServers": {
+    "context7": {
+      "url": "https://mcp.context7.com/mcp",
+      "headers": { "Authorization": "Bearer …" }
+    }
+  }
+}
+```
+
+:::
+
+## Air in JetBrains IDEs
+
+| | |
+|---|---|
+| **Global** | `~/.jetbrains/mcp/mcp.json` (`%USERPROFILE%\.jetbrains\mcp\mcp.json` on Windows) |
+| **Detected by** | `~/.jetbrains` |
+
+This is the Air plugin inside JetBrains IDEs, not the standalone Air app. It reads one global file and has no project-level MCP file. An entry with a `command` runs locally and one with a `url` connects over HTTP, so Kumi writes no `type`. Air in IDEs doesn't support SSE, so SSE servers go through `mcp-remote`.
+
+After installing, open **Settings | AI | Air | MCP Servers** in the IDE, refresh the list and tick the server to turn it on. The change applies to the next agent session you start.
 
 ::: code-group
 
