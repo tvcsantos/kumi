@@ -1,6 +1,6 @@
 # Supported apps
 
-Kumi writes MCP servers into ten apps. This page lists, for each one, where its config lives, its format, and an example of what Kumi writes.
+Kumi writes MCP servers into eleven apps. This page lists, for each one, where its config lives, its format, and an example of what Kumi writes.
 
 The examples install [Context7](https://context7.com) two ways: as a local npm package with an API key, and as a hosted server with an `Authorization` header.
 
@@ -18,6 +18,7 @@ The examples install [Context7](https://context7.com) two ways: as a local npm p
 | [Pi](#pi) | global, project | JSON | `mcpServers` |
 | [Junie](#junie) | global, project | JSON | `mcpServers` |
 | [Air in JetBrains IDEs](#air-in-jetbrains-ides) | global | JSON | `mcpServers` |
+| [Zed](#zed) | global, project | JSONC | `context_servers` |
 
 ## Transports
 
@@ -33,6 +34,7 @@ The examples install [Context7](https://context7.com) two ways: as a local npm p
 | Pi | ✅ | ✅ | via `mcp-remote` |
 | Junie | ✅ | ✅ | via `mcp-remote` |
 | Air in JetBrains IDEs | ✅ | ✅ | via `mcp-remote` |
+| Zed | ✅ | ✅ | via `mcp-remote` |
 
 **via `mcp-remote`** means the app can't connect to that kind of server from its config file, so Kumi runs [`mcp-remote`](https://www.npmjs.com/package/mcp-remote), a stdio bridge, in its place. Headers are passed through environment variables named `MCP_HEADER_<NAME>`, which `mcp-remote` expands itself, so values with spaces need no quoting. The bridge needs Node.js.
 
@@ -435,6 +437,45 @@ After installing, open **Settings | AI | Air | MCP Servers** in the IDE, refresh
 
 :::
 
+## Zed
+
+| | |
+|---|---|
+| **Global** | macOS: `~/.config/zed/settings.json`<br>Linux: `~/.config/zed/settings.json` (follows `$XDG_CONFIG_HOME`)<br>Windows: `%APPDATA%\Zed\settings.json` |
+| **Project** | `<project>/.zed/settings.json` |
+| **Detected by** | `zed` on `PATH`, or the config folder, or `Zed.app` (macOS) |
+
+Zed keeps MCP servers under `context_servers` in its main settings file, alongside every other setting; Kumi edits only its own entry and keeps your comments. An entry with a `command` runs locally and one with a `url` connects over Streamable HTTP, so Kumi writes no `type`. SSE servers go through `mcp-remote`.
+
+Zed picks up the change without a restart; check **Settings | AI | MCP Servers** for a green dot. Servers in a project's `.zed/settings.json` only start once you trust that project.
+
+::: code-group
+
+```jsonc [Local package]
+{
+  "context_servers": {
+    "context7": {
+      "command": "npx",
+      "args": ["-y", "@upstash/context7-mcp@4.4.4"],
+      "env": { "CONTEXT7_API_KEY": "…" }
+    }
+  }
+}
+```
+
+```jsonc [Hosted]
+{
+  "context_servers": {
+    "context7": {
+      "url": "https://mcp.context7.com/mcp",
+      "headers": { "Authorization": "Bearer …" }
+    }
+  }
+}
+```
+
+:::
+
 ## Windows
 
 On Windows, `npx`, `npm`, `pnpm`, `pnpx`, `yarn` and `bunx` are `.cmd` shims that most apps can't start directly, so Kumi wraps them:
@@ -448,4 +489,4 @@ On Windows, `npx`, `npm`, `pnpm`, `pnpx`, `yarn` and `bunx` are `.cmd` shims tha
 
 ## Coming later
 
-Windsurf, Zed, Cline, Gemini CLI, Continue, and Copilot in JetBrains and Visual Studio are on the roadmap. Each app is one adapter; see [Adding an app](../contributing/adding-an-app).
+Windsurf, Cline, Gemini CLI, Continue, and Copilot in JetBrains and Visual Studio are on the roadmap. Each app is one adapter; see [Adding an app](../contributing/adding-an-app).

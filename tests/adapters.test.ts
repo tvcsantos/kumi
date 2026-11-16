@@ -251,3 +251,32 @@ describe('jetbrains-air', () => {
     expect(adapter.scopes).toEqual(['user']);
   });
 });
+
+describe('zed', () => {
+  const adapter = getAdapter('zed');
+
+  it('writes plain context_servers entries without a type', () => {
+    const { text } = adapter.upsert('', remote, user, mac);
+    expect((parseJson(text) as { context_servers: Record<string, unknown> }).context_servers.remote).toEqual({ url: remote.url, headers: remote.headers });
+  });
+
+  it('leaves the rest of settings.json, comments included, untouched', () => {
+    const settings = '{\n  // my theme\n  "theme": "One Dark",\n  "context_servers": {}\n}\n';
+    const { text } = adapter.upsert(settings, stdio, user, mac);
+    expect(text).toContain('// my theme');
+    expect(text).toContain('"theme": "One Dark"');
+    expect(adapter.readServers(text, user).context7).toMatchObject({ command: 'npx' });
+  });
+
+  it('bridges SSE servers', () => {
+    const { warnings } = adapter.upsert('', { ...remote, transport: 'sse' }, user, mac);
+    expect(warnings[0]).toMatch(/mcp-remote/);
+  });
+
+  it('uses ~/.config/zed, %APPDATA%\\Zed and .zed/settings.json in the project', () => {
+    expect(adapter.configPath({ home: '/h', platform: 'darwin', xdgConfig: '/x', vars: {} } as never, user)).toBe(join('/h', '.config', 'zed', 'settings.json'));
+    expect(adapter.configPath({ home: '/h', platform: 'linux', xdgConfig: '/x', vars: {} } as never, user)).toBe(join('/x', 'zed', 'settings.json'));
+    expect(adapter.configPath({ home: '/h', platform: 'win32', appData: '/a', vars: {} } as never, user)).toBe(join('/a', 'Zed', 'settings.json'));
+    expect(adapter.configPath({ home: '/h', vars: {} } as never, { kind: 'project', projectDir: '/repo' })).toBe(join('/repo', '.zed', 'settings.json'));
+  });
+});
