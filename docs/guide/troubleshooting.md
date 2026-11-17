@@ -43,6 +43,18 @@ Kumi checks a registry before saving it. The error says what went wrong:
 - *Secret headers can only be sent over https*: use an `https` URL.
 - *Can't store secret headers securely*: the OS keychain isn't available. On Linux, make sure a Secret Service provider (GNOME Keyring, KWallet) is running.
 
+## "unable to get local issuer certificate" or "self-signed certificate"
+
+The server, or a proxy in between, uses a certificate from a CA that isn't public, such as a corporate or internal one. Kumi trusts the CAs your system trusts, so add the CA there:
+
+- **macOS:** add it to the Keychain and mark it trusted ("Always Trust").
+- **Windows:** import it into the Trusted Root Certification Authorities store.
+- **Linux:** install it with your distro's tool, for example `update-ca-certificates` (Debian, Ubuntu) or `update-ca-trust` (Fedora, RHEL).
+
+Or point `NODE_EXTRA_CA_CERTS` or `SSL_CERT_FILE` at a PEM bundle with the CA. See [Environment variables](../reference/environment#certificates). Restart Kumi afterwards.
+
+This covers **Test connection** and registries. Your apps make their own connections, so they may need the same CA set up separately.
+
 ## "Couldn't decrypt the secret headers"
 
 The keychain entry Kumi used is gone, for example after moving to a new machine. Edit the registry and enter the secret values again.

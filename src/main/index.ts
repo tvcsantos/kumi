@@ -12,6 +12,7 @@ import { createSafeStorageBox } from './secrets/secrets';
 import { SettingsStore } from './settings';
 import { BackupService } from './state/backups';
 import { StateStore } from './state/store';
+import { trustSystemCertificates } from './tls';
 import { createInstaller } from './updater/create';
 import { releaseFeed } from './updater/github';
 import { detectInstallKind } from './updater/install-kind';
@@ -75,6 +76,7 @@ function createWindow() {
 
 async function startServices(): Promise<Services> {
   await loadShellEnv();
+  trustSystemCertificates();
   const env = createHostEnv();
   const state = new StateStore(dataDir);
   const backups = new BackupService(dataDir);

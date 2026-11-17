@@ -25,11 +25,30 @@ Apps opened from the Dock, Finder or a desktop launcher on macOS and Linux start
 So at startup Kumi asks your login shell (`$SHELL -ilc`, falling back to `/bin/zsh`) for:
 
 - `PATH`, merged with the one Kumi started with, to find `npx`, `uvx`, `docker`, `dnx` and the app commands it uses for detection;
-- `CLAUDE_CONFIG_DIR`, `CODEX_HOME` and `XDG_CONFIG_HOME`, if Kumi didn't already have them.
+- `CLAUDE_CONFIG_DIR`, `CODEX_HOME` and `XDG_CONFIG_HOME`, if Kumi didn't already have them;
+- the [certificate variables](#certificates) below, if Kumi didn't already have them.
 
 This takes at most five seconds, and the window opens while it runs. On Windows, GUI apps already see the user's environment, so this step is skipped.
 
 `PI_CODING_AGENT_DIR` isn't read from the shell. Set it in Kumi's own environment, for example by starting Kumi from a terminal that has it.
+
+## Certificates
+
+Kumi trusts the certificate authorities your system trusts, on top of the public ones it ships with. That lets it reach registries and remote servers behind a corporate proxy or signed by an internal CA:
+
+| Platform | Where Kumi looks |
+|---|---|
+| macOS | The Keychain: certificates you've marked as trusted. |
+| Windows | The Windows certificate store, including CAs set by group policy. |
+| Linux | The system bundle, for example `/etc/ssl/certs/ca-certificates.crt` (Debian, Ubuntu) or `/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem` (Fedora, RHEL). |
+
+It also trusts the PEM bundles named by these variables:
+
+| Variable | Used by |
+|---|---|
+| `NODE_EXTRA_CA_CERTS` | Kumi, and Node.js servers started by **Test connection**. |
+| `SSL_CERT_FILE` | Kumi, and OpenSSL-based tools such as Python and curl. |
+| `SSL_CERT_DIR`, `REQUESTS_CA_BUNDLE`, `CURL_CA_BUNDLE` | Not read by Kumi; passed on to the servers that **Test connection** starts. |
 
 ## Trying Kumi without touching your configs
 

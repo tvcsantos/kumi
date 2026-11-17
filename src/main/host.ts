@@ -4,8 +4,20 @@ import { homedir } from 'node:os';
 import { delimiter, join } from 'node:path';
 import type { HostEnv } from './clients/types';
 
-/** Variables that move client config files; set in shell profiles, so GUI launches don't see them. */
-const SHELL_VARS = ['CLAUDE_CONFIG_DIR', 'CODEX_HOME', 'XDG_CONFIG_HOME'];
+/**
+ * Set in shell profiles, so GUI launches don't see them: variables that move client config files, and the CA bundles
+ * that servers started for "Test connection" (Node, Python, curl) need behind a corporate proxy or internal CA.
+ */
+const SHELL_VARS = [
+  'CLAUDE_CONFIG_DIR',
+  'CODEX_HOME',
+  'XDG_CONFIG_HOME',
+  'NODE_EXTRA_CA_CERTS',
+  'SSL_CERT_FILE',
+  'SSL_CERT_DIR',
+  'REQUESTS_CA_BUNDLE',
+  'CURL_CA_BUNDLE',
+];
 
 /**
  * GUI apps on macOS/Linux start with a minimal environment, so `npx`, `uvx` or `claude` installed through
