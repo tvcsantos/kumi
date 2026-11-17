@@ -112,6 +112,7 @@ function createHandlers(s: Services): Handlers {
     registriesAdd: (draft) => s.catalog.add(registryDraft.parse(draft)),
     registriesUpdate: (id, patch) => s.catalog.update(registryId.parse(id), registryPatch.parse(patch)),
     registriesRemove: (id) => s.catalog.remove(registryId.parse(id)),
+    registriesRefresh: (id) => s.catalog.refresh(registryId.parse(id)),
     clientsList: async () =>
       Promise.all(
         ADAPTERS.map(

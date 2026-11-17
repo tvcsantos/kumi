@@ -14,6 +14,8 @@ export interface SourcePage {
 export interface RegistrySource {
   search(query: string, cursor?: string, limit?: number): Promise<SourcePage>;
   get(name: string, version?: string): Promise<RegistryServer>;
+  /** Fetches the registry again now, ignoring the cache. Throws when it can't be reached, leaving the cache as it was. */
+  refresh(): Promise<void>;
 }
 
 export function isActive(r: RegistryServerResponse): boolean {
@@ -21,7 +23,7 @@ export function isActive(r: RegistryServerResponse): boolean {
   return !meta?.status || meta.status === 'active';
 }
 
-type ListResponse ={ servers: RegistryServerResponse[]; metadata?: { nextCursor?: string } };
+type ListResponse = { servers: RegistryServerResponse[]; metadata?: { nextCursor?: string } };
 
 export class ApiRegistry implements RegistrySource {
   private readonly baseUrl: string;
@@ -34,8 +36,8 @@ export class ApiRegistry implements RegistrySource {
     this.baseUrl = baseUrl.replace(/\/+$/, '');
   }
 
-  private getJson<T>(path: string): Promise<T> {
-    return this.http.getJson<T>(`${this.baseUrl}${path}`, { headers: this.headers, notFound: 'Not found in the registry' });
+  private getJson<T>(path: string, force = false): Promise<T> {
+    return this.http.getJson<T>(`${this.baseUrl}${path}`, { headers: this.headers, force, notFound: 'Not found in the registry' });
   }
 
   async search(query: string, cursor?: string, limit = 30): Promise<SourcePage> {
@@ -52,6 +54,15 @@ export class ApiRegistry implements RegistrySource {
   async get(name: string, version = 'latest'): Promise<RegistryServer> {
     const res = await this.getJson<RegistryServerResponse>(`/servers/${encodeURIComponent(name)}/versions/${encodeURIComponent(version)}`);
     return res.server;
+  }
+
+  /**
+   * Answers are cached per search, page and server, so they can't all be fetched again up front. Checks the registry
+   * answers, then expires everything cached for it so each one is fetched again when it's next needed.
+   */
+  async refresh(): Promise<void> {
+    await this.getJson<ListResponse>('/servers?limit=1', true);
+    await this.http.expire(this.baseUrl);
   }
 
   /**

@@ -11,6 +11,8 @@ const MAX_CACHE_ENTRIES = 500;
 interface CacheEntry {
   at: number;
   data: unknown;
+  /** Set by a refresh: go to the network next time, but keep the copy as the offline fallback. */
+  expired?: true;
 }
 
 export type Fetch = typeof fetch;
@@ -74,6 +76,8 @@ export interface GetOptions {
   headers?: Record<string, string>;
   /** Skip the cache entirely: no fresh or stale hits, nothing stored. Used to check a registry before saving it. */
   noCache?: boolean;
+  /** Go to the network and store the answer, but never answer from the cache, even when the request fails. Used to refresh. */
+  force?: boolean;
   /** What a 404 means here, e.g. "Registry file not found". */
   notFound?: string;
 }
@@ -107,11 +111,28 @@ export class HttpCache {
     await atomicWrite(this.cachePath, JSON.stringify(cache)).catch(() => {});
   }
 
+  /**
+   * Marks every cached answer for `base` (the URL itself, or anything below it as a path or query) as expired, so the
+   * next request for it goes to the network. The copies stay as the fallback for when the network fails.
+   */
+  async expire(base: string): Promise<void> {
+    const cache = await this.loadCache();
+    const root = base.replace(/\/+$/, '');
+    let changed = false;
+    for (const [url, entry] of Object.entries(cache)) {
+      if (url === root || url.startsWith(`${root}/`) || url.startsWith(`${root}?`)) {
+        entry.expired = true;
+        changed = true;
+      }
+    }
+    if (changed) await this.saveCache();
+  }
+
   /** Fresh cache → network (with retries) → stale cache. */
   async getJson<T>(url: string, opts: GetOptions = {}): Promise<T> {
     const cache = await this.loadCache();
-    const hit = opts.noCache ? undefined : cache[url];
-    if (hit && Date.now() - hit.at < FRESH_MS) return hit.data as T;
+    const hit = opts.noCache || opts.force ? undefined : cache[url];
+    if (hit && !hit.expired && Date.now() - hit.at < FRESH_MS) return hit.data as T;
 
     // Lower-case the names so a custom header replaces ours rather than being merged into it.
     const headers: Record<string, string> = { accept: 'application/json' };

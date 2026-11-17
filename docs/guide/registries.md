@@ -70,3 +70,9 @@ Servers you installed from a registry stay editable even after you turn that reg
 ## Offline and failures
 
 Responses are cached on disk for ten minutes and reused when a registry can't be reached. When one of several registries fails, Discover shows the results from the others and names the one that failed. Requests time out after 25 seconds, because the official registry can be slow to answer.
+
+## Refreshing a registry
+
+To see a change sooner, for example a server you just added to a hosted registry file or one just published to an API registry, click **Refresh** next to the registry. Kumi fetches it again right away. If the registry can't be reached, Kumi shows the error and keeps the cached copy. A registry has to be turned on to be refreshed.
+
+Local files don't have a **Refresh** button. Kumi already reads them again whenever they change.

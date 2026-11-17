@@ -97,6 +97,8 @@ export interface KumiApi {
   registriesAdd(draft: RegistryDraft): Promise<RegistryInfo>;
   registriesUpdate(id: string, patch: RegistryPatch): Promise<RegistryInfo>;
   registriesRemove(id: string): Promise<void>;
+  /** Fetches the registry again now, ignoring the cache. Fails when it can't be reached. */
+  registriesRefresh(id: string): Promise<void>;
   clientsList(): Promise<ClientInfo[]>;
   runtimesCheck(): Promise<RuntimeStatus[]>;
   installPlan(request: InstallRequest): Promise<InstallPlan>;
@@ -137,6 +139,7 @@ export const API_METHODS = [
   'registriesAdd',
   'registriesUpdate',
   'registriesRemove',
+  'registriesRefresh',
   'clientsList',
   'runtimesCheck',
   'installPlan',

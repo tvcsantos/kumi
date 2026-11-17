@@ -2,7 +2,7 @@
 
 import { promises as fs } from 'node:fs';
 import type { RegistryServer, RegistryServerResponse } from '@shared/registry';
-import type { HttpCache } from './http';
+import type { GetOptions, HttpCache } from './http';
 import { isActive, type RegistrySource, type SourcePage } from './registry';
 
 export const isUrl = (location: string) => /^https?:\/\//i.test(location);
@@ -44,9 +44,9 @@ export class FileRegistry implements RegistrySource {
     private readonly headers?: Record<string, string>,
   ) {}
 
-  private async entries(noCache = false): Promise<RegistryServerResponse[]> {
+  private async entries(opts: Pick<GetOptions, 'noCache' | 'force'> = {}): Promise<RegistryServerResponse[]> {
     if (isUrl(this.location)) {
-      return parseServerList(await this.http.getJson<unknown>(this.location, { headers: this.headers, noCache, notFound: 'Registry file not found' }));
+      return parseServerList(await this.http.getJson<unknown>(this.location, { ...opts, headers: this.headers, notFound: 'Registry file not found' }));
     }
     const { mtimeMs } = await fs.stat(this.location).catch((e: NodeJS.ErrnoException) => {
       throw new Error(e.code === 'ENOENT' ? `Registry file not found: ${this.location}` : e.message);
@@ -83,6 +83,12 @@ export class FileRegistry implements RegistrySource {
   /** Loads the file once, bypassing caches, and returns how many servers it lists. */
   async probe(): Promise<number> {
     this.local = null;
-    return latestByName(await this.entries(true)).length;
+    return latestByName(await this.entries({ noCache: true })).length;
+  }
+
+  /** Downloads the file again and caches it. A local file is read again, though it's already reloaded whenever it changes. */
+  async refresh(): Promise<void> {
+    if (!isUrl(this.location)) this.local = null;
+    await this.entries({ force: true });
   }
 }

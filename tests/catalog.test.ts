@@ -162,6 +162,48 @@ describe('HttpCache errors', () => {
   });
 });
 
+describe('HttpCache refresh', () => {
+  const denied = () => new Response('', { status: 401 });
+
+  it('forces a fetch past a fresh copy and stores the answer, but never falls back to the cache', async () => {
+    const calls: Call[] = [];
+    const routes: Record<string, unknown> = { 'https://acme.test/a': { v: 1 } };
+    const http = new HttpCache(root, fakeFetch(routes, calls));
+    expect(await http.getJson('https://acme.test/a')).toEqual({ v: 1 });
+    routes['https://acme.test/a'] = { v: 2 };
+    expect(await http.getJson('https://acme.test/a')).toEqual({ v: 1 });
+    expect(await http.getJson('https://acme.test/a', { force: true })).toEqual({ v: 2 });
+    expect(await http.getJson('https://acme.test/a')).toEqual({ v: 2 });
+    expect(calls).toHaveLength(2);
+
+    routes['https://acme.test/a'] = denied;
+    await expect(http.getJson('https://acme.test/a', { force: true })).rejects.toThrow(/Access denied/);
+  });
+
+  it('expires everything under a base URL, keeping the copies for when the network fails', async () => {
+    const calls: Call[] = [];
+    const routes: Record<string, unknown> = {
+      'https://reg.test/v0': { v: 1 },
+      'https://reg.test/v0/servers?limit=30': { v: 1 },
+      'https://reg.test/v0?x=1': { v: 1 },
+      'https://reg.test/v0.1/servers': { v: 1 },
+    };
+    const http = new HttpCache(root, fakeFetch(routes, calls));
+    for (const url of Object.keys(routes)) await http.getJson(url);
+    for (const url of Object.keys(routes)) routes[url] = { v: 2 };
+
+    await http.expire('https://reg.test/v0/');
+    expect(await http.getJson('https://reg.test/v0')).toEqual({ v: 2 });
+    expect(await http.getJson('https://reg.test/v0?x=1')).toEqual({ v: 2 });
+    // Only a path or query below the base counts: /v0.1 is another registry.
+    expect(await http.getJson('https://reg.test/v0.1/servers')).toEqual({ v: 1 });
+
+    routes['https://reg.test/v0/servers?limit=30'] = denied;
+    expect(await http.getJson('https://reg.test/v0/servers?limit=30')).toEqual({ v: 1 });
+    expect(calls.at(-1)!.url).toBe('https://reg.test/v0/servers?limit=30');
+  });
+});
+
 describe('ApiRegistry.probe', () => {
   it('finds the versioned base URL when given a bare host', async () => {
     const http = new HttpCache(root, fakeFetch({ 'https://reg.acme.test/v0.1/servers?limit=1': { servers: [] } }));
@@ -351,6 +393,39 @@ describe('Catalog', () => {
     const added = await catalog.add({ name: 'Acme', kind: 'api', location: 'https://reg.acme.test' });
     expect(added.location).toBe('https://reg.acme.test/v0');
     expect(await catalog.list()).toHaveLength(2);
+  });
+
+  it('refreshes a remote file before its cached copy goes stale', async () => {
+    const routes: Record<string, unknown> = { 'https://acme.test/servers.json': [server('acme/db')] };
+    const { catalog } = await setup(routes);
+    const { id } = await catalog.add({ name: 'Acme', kind: 'file', location: 'https://acme.test/servers.json' });
+    await catalog.update(OFFICIAL_REGISTRY_ID, { enabled: false });
+    expect((await catalog.search('')).items).toHaveLength(1);
+
+    routes['https://acme.test/servers.json'] = [server('acme/db'), server('acme/wiki')];
+    expect((await catalog.search('')).items).toHaveLength(1);
+    await catalog.refresh(id);
+    expect((await catalog.search('')).items.map((i) => i.server.name)).toEqual(['acme/db', 'acme/wiki']);
+  });
+
+  it('refreshes an API registry, and leaves its cache alone when it can\'t be reached', async () => {
+    const calls: Call[] = [];
+    const probe = `${DEFAULT_REGISTRY_URL}/servers?limit=1`;
+    const routes: Record<string, unknown> = { [probe]: { servers: [] }, [OFFICIAL_SEARCH]: { servers: [{ server: server('io.github/a') }] } };
+    const catalog = new Catalog(new RegistryStore(root, fakeBox), new HttpCache(join(root, 'cache-dir'), fakeFetch(routes, calls)));
+    expect((await catalog.search('')).items).toHaveLength(1);
+
+    routes[OFFICIAL_SEARCH] = { servers: [{ server: server('io.github/a') }, { server: server('io.github/b') }] };
+    routes[probe] = () => new Response('', { status: 401 });
+    await expect(catalog.refresh(OFFICIAL_REGISTRY_ID)).rejects.toThrow(/Access denied/);
+    const before = calls.length;
+    expect((await catalog.search('')).items).toHaveLength(1);
+    expect(calls).toHaveLength(before);
+
+    routes[probe] = { servers: [] };
+    await catalog.refresh(OFFICIAL_REGISTRY_ID);
+    expect((await catalog.search('')).items).toHaveLength(2);
+    await expect(catalog.refresh('nope')).rejects.toThrow('Registry not found');
   });
 
   it('sends the custom headers when checking and searching, including after an edit', async () => {

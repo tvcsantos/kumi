@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { CheckCircle2, CircleDashed, FileCode, FileJson, FolderSearch, Globe, History, Lock, Monitor, Moon, Pencil, Plus, Sun, Trash2 } from 'lucide-react';
+import { CheckCircle2, CircleDashed, FileCode, FileJson, FolderSearch, Globe, History, Lock, Monitor, Moon, Pencil, Plus, RefreshCw, Sun, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import type { RegistryInfo } from '@shared/registry';
 import type { Settings as SettingsData, ThemeSetting, UpdateChannel } from '@shared/api';
@@ -21,6 +21,8 @@ function Section({ title, description, children }: { title: string; description?
   );
 }
 
+const isUrl = (location: string) => /^https?:\/\//i.test(location);
+
 function Registries() {
   const queryClient = useQueryClient();
   const registries = useRegistries();
@@ -35,6 +37,8 @@ function Registries() {
     onSettled: refresh,
   });
   const remove = useMutation({ mutationFn: api.registriesRemove, onSuccess: refresh });
+  const reload = useMutation({ mutationFn: api.registriesRefresh, onSuccess: refresh });
+  const reloadError = reload.error && `${registries.data?.find((r) => r.id === reload.variables)?.name ?? 'Registry'}: ${errorMessage(reload.error)}`;
 
   return (
     <Section title="Registries" description="Where Kumi looks for MCP servers. Discover searches every registry that's turned on.">
@@ -68,6 +72,20 @@ function Registries() {
               />
               On
             </label>
+            {/* A local file is already read again whenever it changes. */}
+            {(r.kind === 'api' || isUrl(r.location)) && (
+              <Button
+                size="sm"
+                variant="ghost"
+                icon={<RefreshCw className="size-3.5" />}
+                title={r.enabled ? 'Fetch this registry again now instead of using the copy cached in the last ten minutes' : 'Turn this registry on to refresh it'}
+                loading={reload.isPending && reload.variables === r.id}
+                disabled={!r.enabled || reload.isPending}
+                onClick={() => reload.mutate(r.id)}
+              >
+                Refresh
+              </Button>
+            )}
             {!r.builtIn && (
               <>
                 <Button size="sm" variant="ghost" icon={<Pencil className="size-3.5" />} onClick={() => setDialog({ registry: r })}>
@@ -96,6 +114,7 @@ function Registries() {
         </Button>
       </div>
       {(toggle.error || remove.error) && <p className="mt-2 text-xs text-danger">{errorMessage(toggle.error ?? remove.error)}</p>}
+      {reloadError && <p className="mt-2 text-xs text-danger">{reloadError}</p>}
       {dialog && <RegistryDialog registry={dialog.registry} onClose={() => setDialog(null)} />}
     </Section>
   );

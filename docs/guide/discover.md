@@ -52,4 +52,4 @@ Click **Install** to start the [install wizard](./install).
 
 ## Offline
 
-Registry responses are cached on disk for ten minutes. If a registry can't be reached, Kumi falls back to the last copy it has, so you can keep browsing offline.
+Registry responses are cached on disk for ten minutes. To fetch one again sooner, use **Refresh** in **Settings → Registries** ([more](./registries#refreshing-a-registry)). If a registry can't be reached, Kumi falls back to the last copy it has, so you can keep browsing offline.

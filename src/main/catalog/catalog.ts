@@ -84,6 +84,13 @@ export class Catalog {
     return this.sourceFor(r).get(name, version);
   }
 
+  /** Fetches a registry again now instead of waiting for its cached answers to go stale. Works for disabled registries too. */
+  async refresh(id: string): Promise<void> {
+    const r = await this.store.resolve(id);
+    if (!r) throw new Error('Registry not found');
+    await this.sourceFor(r).refresh();
+  }
+
   list(): Promise<RegistryInfo[]> {
     return this.store.list();
   }
