@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, Check, CheckCircle2, FolderOpen, PlugZap, RotateCcw, XCircle } from 'lucide-react';
+import { AlertTriangle, Check, CheckCircle2, FileText, FolderOpen, PlugZap, RotateCcw, XCircle } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import type { RegistryServer } from '@shared/registry';
 import type {
@@ -86,6 +86,12 @@ export function HealthPanel({ result }: { result: HealthResult }) {
         <div className="font-medium">Connection failed</div>
         <div className="break-words">{result.error}</div>
         {result.stderr && <pre className="mt-2 max-h-32 overflow-auto font-mono text-[11px] whitespace-pre-wrap opacity-80">{result.stderr}</pre>}
+        <div className="mt-2 flex items-center gap-2 text-xs opacity-80">
+          <span>The full output is saved in Kumi's log.</span>
+          <Button size="sm" variant="ghost" icon={<FileText className="size-3.5" />} onClick={() => api.revealLog().catch((e) => window.alert(errorMessage(e)))}>
+            Show log
+          </Button>
+        </div>
       </Callout>
     );
   }

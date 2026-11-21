@@ -2,6 +2,7 @@
 
 import { join } from 'node:path';
 import { atomicWrite, readTextOrNull } from '../config-io/fs';
+import { log } from '../log';
 
 // The registry sometimes takes ~15s to answer; don't abort just before it does.
 const TIMEOUT_MS = 25_000;
@@ -175,7 +176,7 @@ export class HttpCache {
         await new Promise((r) => setTimeout(r, 400 * 2 ** attempt));
       }
     }
-    console.warn(`[registry] GET ${url} failed${hit ? ', using the cached copy' : ''}: ${lastError instanceof Error ? lastError.message : String(lastError)}`);
+    void log('warn', 'registry', `GET ${url} failed${hit ? ', using the cached copy' : ''}: ${lastError instanceof Error ? lastError.message : String(lastError)}`);
     if (hit) return hit.data as T;
     throw lastError instanceof Error ? lastError : new Error(String(lastError));
   }

@@ -7,10 +7,14 @@ import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
 import type { HealthResult, ServerSpec } from '@shared/types';
+import { log } from '../log';
 import { OAuthSession, type OpenBrowser } from './oauth';
 
 const TIMEOUT_MS = 90_000; // first `npx`/`uvx`/`docker` run may download the package
 const SIGN_IN_TIMEOUT_MS = 5 * 60_000;
+/** The result (and so the UI) gets the end of the server's stderr; the log keeps much more of it. */
+const STDERR_SHOWN = 4000;
+const STDERR_LOGGED = 64 * 1024;
 
 function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
   return new Promise((resolve, reject) => {
@@ -80,10 +84,38 @@ function mayUseOAuth(spec: ServerSpec): boolean {
   return spec.transport !== 'stdio' && !Object.keys(spec.headers ?? {}).some((h) => h.toLowerCase() === 'authorization');
 }
 
+const SECRET_NAME = /token|key|secret|passw(or)?d|auth|credential|bearer/i;
+
+/** What was started or contacted, without secrets: env and header values, flagged args, URL query and credentials. */
+export function describeForLog(spec: ServerSpec): string {
+  const lines = [`transport: ${spec.transport}`];
+  if (spec.transport === 'stdio') {
+    const secret = new Set(spec.secretArgs ?? []);
+    const args = (spec.args ?? []).map((a, i, all) => {
+      if (secret.has(i) || (i > 0 && /^--?[\w-]+$/.test(all[i - 1]!) && SECRET_NAME.test(all[i - 1]!))) return '***';
+      const eq = a.indexOf('=');
+      return eq > 0 && SECRET_NAME.test(a.slice(0, eq)) ? `${a.slice(0, eq)}=***` : a;
+    });
+    lines.push(`command: ${[spec.command, ...args].join(' ')}`);
+    const env = Object.keys(spec.env ?? {});
+    if (env.length) lines.push(`env (values hidden): ${env.join(', ')}`);
+  } else {
+    let url = spec.url ?? '';
+    try {
+      const u = new URL(url);
+      url = `${u.origin}${u.pathname}${u.search ? '?…' : ''}`;
+    } catch {}
+    lines.push(`url: ${url}`);
+    const headers = Object.keys(spec.headers ?? {});
+    if (headers.length) lines.push(`headers (values hidden): ${headers.join(', ')}`);
+  }
+  return lines.join('\n');
+}
+
 export async function testServer(spec: ServerSpec, openBrowser: OpenBrowser = openInBrowser): Promise<HealthResult> {
   const started = Date.now();
-  let stderr = '';
-  const onStderr = (c: string) => (stderr = (stderr + c).slice(-4000));
+  let fullStderr = '';
+  const onStderr = (c: string) => (fullStderr = (fullStderr + c).slice(-STDERR_LOGGED));
   let client = new Client({ name: 'kumi', version: '0.1.0' });
   let transport: Transport | undefined;
   let oauth: OAuthSession | undefined;
@@ -110,7 +142,7 @@ export async function testServer(spec: ServerSpec, openBrowser: OpenBrowser = op
       serverName: info?.name,
       serverVersion: info?.version,
       tools: tools.tools.map((t) => ({ name: t.name, description: t.description })),
-      stderr: stderr || undefined,
+      stderr: fullStderr.slice(-STDERR_SHOWN) || undefined,
       durationMs: Date.now() - started,
     };
   } catch (e) {
@@ -118,7 +150,11 @@ export async function testServer(spec: ServerSpec, openBrowser: OpenBrowser = op
     // HTTP transport errors carry the status in `code`, and the message is often just the (empty) body.
     const status = (e as { code?: unknown } | null)?.code;
     if (typeof status === 'number' && status >= 400 && !message.includes(String(status))) message = `${message.replace(/:\s*$/, '')} (HTTP ${status})`;
-    return { ok: false, tools: [], error: hint(message, stderr), stderr: stderr || undefined, durationMs: Date.now() - started };
+    const error = hint(message, fullStderr);
+    const durationMs = Date.now() - started;
+    const stack = e instanceof Error && e.stack ? `\n${e.stack}` : '';
+    await log('error', 'test-connection', `"${spec.name}" failed after ${(durationMs / 1000).toFixed(1)}s: ${error}`, `${describeForLog(spec)}${stack}${fullStderr ? `\nstderr:\n${fullStderr}` : ''}`);
+    return { ok: false, tools: [], error, stderr: fullStderr.slice(-STDERR_SHOWN) || undefined, durationMs };
   } finally {
     oauth?.close();
     await client.close().catch(() => {});

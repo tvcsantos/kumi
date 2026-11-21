@@ -8,6 +8,7 @@ import { RegistryStore } from './catalog/sources';
 import { createHostEnv, loadShellEnv } from './host';
 import { InstallService } from './install/service';
 import { registerIpc, type Services } from './ipc';
+import { initLog, log } from './log';
 import { createSafeStorageBox } from './secrets/secrets';
 import { SettingsStore } from './settings';
 import { BackupService } from './state/backups';
@@ -22,6 +23,7 @@ import { UpdateService } from './updater/service';
 const isDev = !!process.env.ELECTRON_RENDERER_URL;
 const dataDir = process.env.KUMI_DATA_DIR ?? join(homedir(), '.kumi');
 const settings = new SettingsStore(dataDir);
+initLog(join(dataDir, 'logs'));
 
 // Matches the splash screen, so the window never flashes a different color while it loads or switches theme.
 const windowBackground = () => (nativeTheme.shouldUseDarkColors ? '#14161c' : '#f7f2e9');
@@ -104,6 +106,7 @@ async function startServices(): Promise<Services> {
 }
 
 app.whenReady().then(async () => {
+  void log('info', 'app', `Kumi ${app.getVersion()} started (${process.platform} ${process.arch}, Electron ${process.versions.electron})`);
   // Apply the saved appearance before the first window, so it opens in the right theme.
   nativeTheme.themeSource = (await settings.get()).theme;
   nativeTheme.on('updated', () => {

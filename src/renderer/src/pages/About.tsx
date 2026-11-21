@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { BookOpen, Code2, ExternalLink, Library } from 'lucide-react';
+import { BookOpen, Code2, ExternalLink, FileText, Library } from 'lucide-react';
 import { AppIcon, ClientMark } from '../components/bits';
 import { Badge, Button } from '../components/ui';
 import { UpdateCard } from '../components/Updates';
@@ -35,6 +35,7 @@ export function About() {
     ['Node.js', info.data?.node],
     ['Platform', info.data?.platform],
     ['Data folder', info.data?.dataDir],
+    ['Log file', info.data?.logFile],
   ];
 
   return (
@@ -92,6 +93,11 @@ export function About() {
             </div>
           ))}
         </dl>
+        {info.data?.logFile && (
+          <Button size="sm" className="mt-3" icon={<FileText className="size-3.5" />} onClick={() => api.revealLog().catch((e) => window.alert(errorMessage(e)))}>
+            Show log file
+          </Button>
+        )}
       </Card>
 
       <p className="pt-2 text-center text-xs text-muted">MIT License · Made by Tiago Santos</p>

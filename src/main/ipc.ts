@@ -1,6 +1,8 @@
 // IPC handlers. Every argument from the renderer is validated before it reaches a service.
 
-import { isAbsolute } from 'node:path';
+import { existsSync } from 'node:fs';
+import { mkdir } from 'node:fs/promises';
+import { dirname, isAbsolute } from 'node:path';
 import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeTheme, shell } from 'electron';
 import { z } from 'zod';
 import { API_METHODS, channel, type IpcResult, type KumiApi } from '@shared/api';
@@ -9,6 +11,7 @@ import type { Catalog } from './catalog/catalog';
 import { ADAPTERS } from './clients';
 import type { HostEnv } from './clients/types';
 import { testServer } from './health/check';
+import { logFile } from './log';
 import type { InstallService } from './install/service';
 import { checkRuntimes } from './runtime/detect';
 import type { SettingsStore } from './settings';
@@ -104,6 +107,7 @@ function createHandlers(s: Services): Handlers {
       node: process.versions.node,
       platform: `${process.platform} ${process.arch}`,
       dataDir: s.dataDir,
+      logFile: logFile(),
     }),
     catalogSearch: (q, cursor, id) =>
       s.catalog.search(z.string().max(200).parse(q), z.string().max(8000).optional().parse(cursor), registryId.optional().parse(id)),
@@ -175,6 +179,16 @@ function createHandlers(s: Services): Handlers {
       if (s.updates.get().state !== 'ready') throw new Error('No update is ready to install');
       // Answer the renderer first; quitting closes its window.
       setImmediate(() => s.updates.restart());
+    },
+    revealLog: async () => {
+      const file = logFile();
+      if (!file) throw new Error('Logging is not set up');
+      if (existsSync(file)) shell.showItemInFolder(file);
+      else {
+        await mkdir(dirname(file), { recursive: true });
+        const err = await shell.openPath(dirname(file));
+        if (err) throw new Error(err);
+      }
     },
     copyText: async (text) => clipboard.writeText(z.string().max(10_000).parse(text)),
   };

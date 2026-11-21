@@ -79,6 +79,8 @@ export interface AppInfo {
   node: string;
   platform: string;
   dataDir: string;
+  /** Where failed connection tests and other problems are written. */
+  logFile?: string;
 }
 
 export interface UninstallTarget {
@@ -128,6 +130,8 @@ export interface KumiApi {
   updateDownload(): Promise<UpdateStatus>;
   /** Quits, installs the downloaded update and starts the new version. */
   updateRestart(): Promise<void>;
+  /** Shows Kumi's log file in the file manager (or its folder, before anything was logged). */
+  revealLog(): Promise<void>;
   copyText(text: string): Promise<void>;
 }
 
@@ -164,6 +168,7 @@ export const API_METHODS = [
   'updateDismiss',
   'updateDownload',
   'updateRestart',
+  'revealLog',
   'copyText',
 ] as const satisfies readonly (keyof KumiApi)[];
 

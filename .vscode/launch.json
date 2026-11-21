@@ -1,0 +1,47 @@
+{
+  // "Debug Kumi" starts `electron-vite dev` and debugs both processes: breakpoints work in src/main, src/preload and src/renderer.
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Debug Main Process",
+      "type": "node",
+      "request": "launch",
+      "cwd": "${workspaceFolder}",
+      "runtimeExecutable": "${workspaceFolder}/node_modules/.bin/electron-vite",
+      "windows": { "runtimeExecutable": "${workspaceFolder}/node_modules/.bin/electron-vite.cmd" },
+      "runtimeArgs": ["dev", "--sourcemap", "--remoteDebuggingPort", "9222"],
+      "autoAttachChildProcesses": true,
+      "skipFiles": ["<node_internals>/**"],
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "Debug Renderer Process",
+      "type": "chrome",
+      "request": "attach",
+      "port": 9222,
+      "webRoot": "${workspaceFolder}/src/renderer",
+      "timeout": 60000,
+      "presentation": { "hidden": true }
+    },
+    {
+      "name": "Debug Current Test File",
+      "type": "node",
+      "request": "launch",
+      "cwd": "${workspaceFolder}",
+      "program": "${workspaceFolder}/node_modules/vitest/vitest.mjs",
+      "args": ["run", "${relativeFile}", "--no-file-parallelism"],
+      "autoAttachChildProcesses": true,
+      "skipFiles": ["<node_internals>/**"],
+      "console": "integratedTerminal",
+      "smartStep": true
+    }
+  ],
+  "compounds": [
+    {
+      "name": "Debug Kumi",
+      "configurations": ["Debug Main Process", "Debug Renderer Process"],
+      "stopAll": true,
+      "presentation": { "order": 1 }
+    }
+  ]
+}
