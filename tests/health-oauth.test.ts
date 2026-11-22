@@ -1,10 +1,12 @@
+import { readFileSync } from 'node:fs';
 import { createServer, type IncomingMessage, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
+import { join } from 'node:path';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { testServer } from '../src/main/health/check';
-import { clearOAuthCredentials } from '../src/main/health/oauth';
+import { CLIENT_METADATA, CLIENT_METADATA_URL, clearOAuthCredentials, OAuthSession } from '../src/main/health/oauth';
 
 const TOKEN = 'access-123';
 
@@ -19,11 +21,13 @@ interface MockOptions {
   registration?: 'open' | 'forbidden' | 'none';
   /** False: the server answers 401 but publishes no OAuth metadata (it wants an API key). */
   oauth?: boolean;
+  /** True: the authorization server accepts client ID metadata documents (CIMD). */
+  cimd?: boolean;
 }
 
-/** A remote MCP server behind a minimal OAuth authorization server (discovery, DCR, PKCE code flow). */
-function mockServer({ registration = 'open', oauth = true }: MockOptions = {}) {
-  const seen = { registrations: 0, verifiers: [] as string[] };
+/** A remote MCP server behind a minimal OAuth authorization server (discovery, DCR or CIMD, PKCE code flow). */
+function mockServer({ registration = 'open', oauth = true, cimd = false }: MockOptions = {}) {
+  const seen = { registrations: 0, verifiers: [] as string[], clientIds: [] as string[] };
   let base = '';
   const server: Server = createServer(async (req, res) => {
     const url = new URL(req.url!, base);
@@ -39,6 +43,7 @@ function mockServer({ registration = 'open', oauth = true }: MockOptions = {}) {
           authorization_endpoint: `${base}/authorize`,
           token_endpoint: `${base}/token`,
           ...(registration === 'none' ? {} : { registration_endpoint: `${base}/register` }),
+          ...(cimd ? { client_id_metadata_document_supported: true } : {}),
           response_types_supported: ['code'],
           code_challenge_methods_supported: ['S256'],
         });
@@ -48,6 +53,7 @@ function mockServer({ registration = 'open', oauth = true }: MockOptions = {}) {
         if (registration === 'none') return res.writeHead(404).end();
         return json(201, { ...JSON.parse(await body(req)), client_id: 'client-1' });
       case '/authorize': {
+        seen.clientIds.push(url.searchParams.get('client_id') ?? '');
         const back = new URL(url.searchParams.get('redirect_uri')!);
         back.searchParams.set('code', 'code-1');
         back.searchParams.set('state', url.searchParams.get('state')!);
@@ -168,6 +174,49 @@ describe('Test connection with OAuth', () => {
   });
 });
 
+describe('Test connection with a client ID metadata document (CIMD)', () => {
+  const mock = mockServer({ cimd: true });
+  beforeAll(() => mock.start());
+  afterAll(() => mock.stop());
+  afterEach(() => clearOAuthCredentials());
+
+  it('signs in with the metadata document URL as client ID, without registering', async () => {
+    const browser = fakeBrowser();
+    const before = mock.seen.registrations;
+    const res = await testServer(spec(mock.url()), { signIn: true, openBrowser: browser.open });
+    expect(res.error).toBeUndefined();
+    expect(res.tools.map((t) => t.name)).toEqual(['ping']);
+    expect(new URL(browser.opened[0]).searchParams.get('client_id')).toBe(CLIENT_METADATA_URL);
+    expect(mock.seen.clientIds.at(-1)).toBe(CLIENT_METADATA_URL);
+    expect(mock.seen.registrations).toBe(before);
+  });
+
+  it('says the server may not accept Kumi when a CIMD sign-in times out', async () => {
+    const session = await OAuthSession.start(mock.url(), { openBrowser: async () => {}, interactive: false });
+    try {
+      await session.provider.saveClientInformation!({ client_id: CLIENT_METADATA_URL });
+      await expect(session.waitForCode(10)).rejects.toThrow(/timed out.*may not accept Kumi's sign-in/);
+    } finally {
+      session.close();
+    }
+  });
+});
+
+describe('Kumi\'s hosted client metadata document', () => {
+  const hosted = JSON.parse(readFileSync(join(__dirname, '../docs/public/oauth/client-metadata.json'), 'utf8'));
+
+  it('is served at the URL Kumi uses as its client ID', () => {
+    expect(hosted.client_id).toBe(CLIENT_METADATA_URL);
+    // The docs site serves docs/public at its root.
+    expect(CLIENT_METADATA_URL).toMatch(/^https:\/\/[^/]+\/kumi\/oauth\/client-metadata\.json$/);
+  });
+
+  it('matches what Kumi registers, apart from the redirect port', () => {
+    expect(hosted).toMatchObject(CLIENT_METADATA);
+    expect(hosted.redirect_uris).toEqual(['http://127.0.0.1/callback']);
+  });
+});
+
 describe('Test connection with OAuth that Kumi can\'t use', () => {
   afterEach(() => clearOAuthCredentials());
 
@@ -195,6 +244,16 @@ describe('Test connection with OAuth that Kumi can\'t use', () => {
     await withMock({ registration: 'none' }, async (m) => {
       const res = await testServer(spec(m.url()), { openBrowser: fakeBrowser().open });
       expect(res).toMatchObject({ ok: true, signIn: { available: false, reason: 'It only accepts apps registered with it in advance.' } });
+      expect(m.seen.registrations).toBe(0);
+    });
+  });
+
+  it('reports a server that offers only CIMD as up, with sign-in available', async () => {
+    await withMock({ registration: 'none', cimd: true }, async (m) => {
+      const browser = fakeBrowser();
+      const res = await testServer(spec(m.url()), { openBrowser: browser.open });
+      expect(res).toMatchObject({ ok: true, tools: [], signIn: { available: true } });
+      expect(browser.opened).toHaveLength(0);
       expect(m.seen.registrations).toBe(0);
     });
   });

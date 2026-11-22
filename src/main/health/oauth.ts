@@ -1,5 +1,8 @@
-// MCP OAuth for "Test connection": the SDK drives discovery, dynamic client registration and PKCE;
+// MCP OAuth for "Test connection": the SDK drives discovery, getting a client and PKCE;
 // we open the browser and catch the redirect on a loopback server (RFC 8252).
+// Kumi gets a client in one of two ways, and the SDK picks: when the authorization server supports client ID
+// metadata documents (CIMD), Kumi's client ID is the URL of its hosted metadata document; otherwise Kumi
+// registers itself (dynamic client registration).
 // Credentials live in memory for this app session only, so a re-test doesn't ask to sign in again.
 // A test that isn't interactive goes as far as it can without the user (discovery, registration) and stops
 // before the browser, so Kumi can tell whether it could sign in at all.
@@ -11,6 +14,21 @@ import type { OAuthClientProvider, OAuthDiscoveryState } from '@modelcontextprot
 import type { AuthorizationServerMetadata, OAuthClientInformationMixed, OAuthClientMetadata, OAuthTokens } from '@modelcontextprotocol/sdk/shared/auth.js';
 
 const CALLBACK_PATH = '/callback';
+
+/**
+ * Kumi's client ID on authorization servers that support CIMD: the URL of `docs/public/oauth/client-metadata.json`
+ * on the docs site. It must never change (every authorization server knows Kumi by it) and must be served
+ * directly, with no redirect.
+ */
+export const CLIENT_METADATA_URL = 'https://tiago.santos.com.pt/kumi/oauth/client-metadata.json';
+
+/** Shared by the hosted metadata document and dynamic registration; only the redirect URI differs (its port). */
+export const CLIENT_METADATA: Omit<OAuthClientMetadata, 'redirect_uris'> = {
+  client_name: 'Kumi',
+  grant_types: ['authorization_code', 'refresh_token'],
+  response_types: ['code'],
+  token_endpoint_auth_method: 'none',
+};
 
 interface Credentials {
   redirectUrl: string;
@@ -66,14 +84,9 @@ export class OAuthSession {
         return creds.redirectUrl;
       },
       get clientMetadata(): OAuthClientMetadata {
-        return {
-          client_name: 'Kumi',
-          redirect_uris: [creds.redirectUrl],
-          grant_types: ['authorization_code', 'refresh_token'],
-          response_types: ['code'],
-          token_endpoint_auth_method: 'none',
-        };
+        return { ...CLIENT_METADATA, redirect_uris: [creds.redirectUrl] };
       },
+      clientMetadataUrl: CLIENT_METADATA_URL,
       state: () => self.expectedState,
       clientInformation: () => creds.client,
       saveClientInformation: (info) => {
@@ -164,10 +177,20 @@ export class OAuthSession {
     return !!this.creds.client;
   }
 
+  /**
+   * True when Kumi's client ID here is its metadata document URL. The server then checks Kumi's client only when
+   * the browser opens its sign-in page, and a rejected redirect URI shows an error there instead of coming back.
+   */
+  get usesMetadataDocument(): boolean {
+    return this.creds.client?.client_id === CLIENT_METADATA_URL;
+  }
+
   /** Resolves with the authorization code from the browser redirect. */
   waitForCode(timeoutMs: number): Promise<string> {
     return new Promise((resolve, reject) => {
-      const t = setTimeout(() => reject(new Error(`Sign-in timed out after ${Math.round(timeoutMs / 60_000)} minutes.`)), timeoutMs);
+      const timedOut = `Sign-in timed out after ${Math.round(timeoutMs / 60_000)} minutes.`;
+      const message = this.usesMetadataDocument ? `${timedOut} If the browser showed an error, this server may not accept Kumi's sign-in.` : timedOut;
+      const t = setTimeout(() => reject(new Error(message)), timeoutMs);
       this.settle = {
         resolve: (c) => (clearTimeout(t), resolve(c)),
         reject: (e) => (clearTimeout(t), reject(e)),

@@ -27,10 +27,12 @@ Many hosted servers (Notion or Figma, for example) don't take an API key. They u
 
 What comes next depends on the server:
 
-- **Kumi can sign in.** The server lets apps register with it (dynamic client registration), so the result has a **Sign in to list tools** button. Click it to see the tools. Kumi then:
+- **Kumi can sign in.** The server lets apps register with it (dynamic client registration), or it accepts apps that describe themselves in a document they publish (a *client ID metadata document*). Kumi's is at [`https://tiago.santos.com.pt/kumi/oauth/client-metadata.json`](https://tiago.santos.com.pt/kumi/oauth/client-metadata.json). Either way, the result has a **Sign in to list tools** button. Click it to see the tools. Kumi then:
   1. opens the sign-in page in your browser;
   2. waits up to 5 minutes for you to approve, catching the redirect on `http://127.0.0.1:<port>/callback`;
   3. connects again with the new token and lists the tools.
+
+  With a metadata document, the server only checks Kumi when the sign-in page opens. If it rejects Kumi then (for example, because it doesn't accept the random port Kumi listens on), it shows the error in your browser, and Kumi waits until the 5 minutes run out.
 - **Only your apps can sign in.** Some servers only accept apps they approved in advance, or refuse to let new apps register. Figma is one. Kumi says so and stops there. Nothing is wrong on your side; your apps sign in with their own registration.
 
 After you sign in, Kumi keeps the token in memory until you quit, so testing again lists the tools straight away. The token isn't saved to disk or shared with your apps.
@@ -50,7 +52,7 @@ The first run of an `npx`, `uvx` or `docker` server may download the package or 
 | *Is the command installed and on your PATH?* | The runtime (`npx`, `uvx`, `docker`, …) isn't installed, or isn't on your shell's `PATH`. **Settings → Runtimes** shows what Kumi found. |
 | *Check your API key or token.* | The server answered `401 Unauthorized`, and it doesn't offer OAuth sign-in. |
 | *Sign-in failed: …* | After **Sign in to list tools**: you declined in the browser, or the authorization server returned an error. |
-| *Sign-in timed out after 5 minutes* | After **Sign in to list tools**: the browser sign-in wasn't finished. Click the button again to restart it. |
+| *Sign-in timed out after 5 minutes* | After **Sign in to list tools**: the browser sign-in wasn't finished. Click the button again to restart it. If it adds *this server may not accept Kumi's sign-in*, look for an error on the sign-in page: the server may have rejected Kumi's metadata document. |
 | *The credentials don't have access.* | The server answered `403 Forbidden`. |
 | *Timed out after 90s* | The server didn't finish the handshake. Look at its stderr output for clues. |
 

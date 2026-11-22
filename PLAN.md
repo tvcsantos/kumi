@@ -235,7 +235,7 @@ Users' config files hold hand-tuned state. Breaking them destroys trust.
 - **Remote**: Streamable HTTP with headers; on `404`/`405`, retry with SSE.
 - Shows server name and version, tools with descriptions, duration, and errors with hints and stderr.
 - Warns that this **runs the server's code locally**.
-- **OAuth servers**: on a `401` without an `Authorization` header, Kumi doesn't open the browser. It checks the server offers OAuth and shows **Server is up**. If the server supports dynamic client registration, **Sign in to list tools** runs the MCP OAuth flow (discovery, registration, PKCE, browser sign-in with a loopback redirect). Tokens stay in memory for the app session.
+- **OAuth servers**: on a `401` without an `Authorization` header, Kumi doesn't open the browser. It checks the server offers OAuth and shows **Server is up**. If the server supports a client ID metadata document (CIMD) or dynamic client registration, **Sign in to list tools** runs the MCP OAuth flow (discovery, client, PKCE, browser sign-in with a loopback redirect). The SDK prefers CIMD: Kumi's client ID is `https://tiago.santos.com.pt/kumi/oauth/client-metadata.json`, served from `docs/public/oauth/`, with a port-less loopback redirect (`http://127.0.0.1/callback`, RFC 8252 §7.3). With CIMD the server checks Kumi only when the browser opens, so a rejection shows there and Kumi's wait times out with a hint. Tokens stay in memory for the app session.
 - Failures are written to `~/.kumi/logs/kumi.log` (rotated at 2 MB to `kumi.old.log`).
 - TLS trusts the OS certificate store (macOS Keychain, Windows store, Linux system bundles) and the bundles named by `NODE_EXTRA_CA_CERTS` / `SSL_CERT_FILE`, so servers and registries behind a corporate CA work.
 
@@ -249,6 +249,7 @@ Users' config files hold hand-tuned state. Breaking them destroys trust.
 - Spawning: `execFile`/`spawn` with arg arrays, never shell strings.
 - Registry and overlay data are untrusted input; validate against the schema.
 - Signed builds and signed auto-updates once there are certificates (§16).
+- The OAuth client metadata document (§8) is Kumi's identity on authorization servers: whoever can change it can change Kumi's redirect URIs. Its URL must never change and must be served without a redirect, so keep the custom domain on the `tvcsantos.github.io` user site, keep the domain renewed, keep the repo named `kumi` and the docs base `/kumi/`, and set no custom domain on the `kumi` repo.
 
 ---
 
@@ -294,7 +295,7 @@ kumi/
 
 ## 11. Roadmap
 
-> **Status (2026-11-22):** v0.1.14. Phase 0 and the Phase 1 MVP are done, most of Phase 2, and the first Phase 3 apps (Junie, Air in JetBrains IDEs, Zed). Decisions made while building:
+> **Status (2026-11-22):** v0.2.0. Phase 0 and the Phase 1 MVP are done, most of Phase 2, and the first Phase 3 apps (Junie, Air in JetBrains IDEs, Zed). Decisions made while building:
 > - Registry API is `/v0.1`, with a 25s timeout and a disk cache; featured cards load one by one.
 > - JSON/JSONC edits may reformat lines next to the edit; TOML stays byte-identical outside Kumi's sections. Every write is guarded.
 > - Edits are written directly to config files. Vendor CLIs are not used.
