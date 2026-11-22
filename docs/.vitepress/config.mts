@@ -2,7 +2,9 @@ import { defineConfig } from 'vitepress';
 
 const repo = 'https://github.com/tvcsantos/kumi';
 
-// Served from GitHub Pages at https://tvcsantos.github.io/kumi/. Override with DOCS_BASE for another host.
+// Served from GitHub Pages at https://tiago.santos.com.pt/kumi/ (tvcsantos.github.io/kumi/ redirects there).
+// Override with DOCS_BASE for another host. The published site also serves Kumi's OAuth client ID
+// (public/oauth/client-metadata.json), so its URL must not change.
 const base = process.env.DOCS_BASE ?? '/kumi/';
 
 export default defineConfig({
