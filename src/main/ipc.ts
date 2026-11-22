@@ -35,6 +35,7 @@ const serverSpec = z.object({
   secretHeaders: z.array(z.string()).optional(),
   secretArgs: z.array(z.number().int().nonnegative()).optional(),
 }).refine((s) => (s.transport === 'stdio' ? !!s.command : !!s.url), 'stdio servers need a command; remote servers need a URL');
+const healthTestOptions = z.object({ signIn: z.boolean().optional() }).optional();
 const registryId = z.string().min(1).max(100);
 const variantRef = z.union([
   z.object({ kind: z.literal('package'), index: z.number().int().nonnegative() }),
@@ -147,7 +148,7 @@ function createHandlers(s: Services): Handlers {
     backupsRestore: (id) => s.backups.restore(z.uuid().parse(id)),
     projectsAdd: (dir) => s.state.addProject(absPath.parse(dir)),
     projectsRemove: (dir) => s.state.removeProject(absPath.parse(dir)),
-    healthTest: (spec) => testServer(serverSpec.parse(spec)),
+    healthTest: (spec, opts) => testServer(serverSpec.parse(spec), healthTestOptions.parse(opts)),
     pickDirectory: () => pick(['openDirectory']),
     pickFile: () => pick(['openFile']),
     openConfig: async (path) => {

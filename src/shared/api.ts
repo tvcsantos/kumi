@@ -7,6 +7,7 @@ import type {
   ClientId,
   ClientInfo,
   HealthResult,
+  HealthTestOptions,
   InstallPlan,
   InstallRequest,
   InstalledView,
@@ -112,7 +113,8 @@ export interface KumiApi {
   backupsRestore(id: string): Promise<BackupInfo>;
   projectsAdd(dir: string): Promise<void>;
   projectsRemove(dir: string): Promise<void>;
-  healthTest(spec: ServerSpec): Promise<HealthResult>;
+  /** Never opens a browser unless `signIn` is set. */
+  healthTest(spec: ServerSpec, opts?: HealthTestOptions): Promise<HealthResult>;
   pickDirectory(): Promise<string | null>;
   pickFile(): Promise<string | null>;
   /** Opens a client config file (or Kumi backup) in the default editor. */

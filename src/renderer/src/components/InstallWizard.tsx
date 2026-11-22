@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, Check, CheckCircle2, FileText, FolderOpen, PlugZap, RotateCcw, XCircle } from 'lucide-react';
+import { AlertTriangle, Check, CheckCircle2, FileText, FolderOpen, LogIn, PlugZap, RotateCcw, XCircle } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import type { RegistryServer } from '@shared/registry';
 import type {
@@ -73,28 +73,71 @@ function Steps({ current }: { current: Step }) {
   );
 }
 
-/** What "Test connection" is doing; a remote server may open the browser to sign in. */
+/** What "Test connection" is doing. A test never opens the browser; signing in is a separate step. */
 export function testingLabel(spec: ServerSpec | undefined, firstRun = false): string {
-  if (spec && spec.transport !== 'stdio') return 'Connecting… If your browser opens, sign in there to finish.';
+  if (spec && spec.transport !== 'stdio') return 'Connecting…';
   return firstRun ? 'Starting the server… (first run may download it)' : 'Starting the server…';
 }
 
-export function HealthPanel({ result }: { result: HealthResult }) {
+function ShowLog() {
+  return (
+    <div className="mt-2 flex items-center gap-2 text-xs opacity-80">
+      <span>The full output is saved in Kumi's log.</span>
+      <Button size="sm" variant="ghost" icon={<FileText className="size-3.5" />} onClick={() => api.revealLog().catch((e) => window.alert(errorMessage(e)))}>
+        Show log
+      </Button>
+    </div>
+  );
+}
+
+/** The server is up and asks for OAuth sign-in. Signing in here is optional: it only lets Kumi list the tools. */
+function SignInPanel({ result, spec, onResult }: { result: HealthResult; spec: ServerSpec; onResult: (r: HealthResult) => void }) {
+  const [error, setError] = useState<string | null>(null);
+  const signIn = useMutation({
+    mutationFn: () => api.healthTest(spec, { signIn: true }),
+    onMutate: () => setError(null),
+    onSuccess: (r) => (r.ok ? onResult(r) : setError(r.error ?? 'Sign-in failed.')),
+    onError: (e) => setError(errorMessage(e)),
+  });
+  const available = result.signIn?.available;
+  return (
+    <div className="space-y-2">
+      <Callout tone="ok" icon={<CheckCircle2 className="size-4" />}>
+        <div className="font-medium">Server is up</div>
+        <div>It asks you to sign in, which each of your apps does the first time it connects.</div>
+        {available ? (
+          <div className="mt-2">
+            <Button size="sm" icon={<LogIn className="size-3.5" />} loading={signIn.isPending} onClick={() => signIn.mutate()}>
+              Sign in to list tools
+            </Button>
+          </div>
+        ) : (
+          <div className="mt-1 opacity-80">{result.signIn?.reason} Kumi can't list its tools, but your apps can.</div>
+        )}
+      </Callout>
+      {signIn.isPending && <Spinner label="Waiting for you to sign in in your browser…" />}
+      {error && (
+        <Callout tone="danger" icon={<XCircle className="size-4" />}>
+          <div className="break-words">{error}</div>
+          <ShowLog />
+        </Callout>
+      )}
+    </div>
+  );
+}
+
+export function HealthPanel({ result, spec, onResult }: { result: HealthResult; spec?: ServerSpec; onResult: (r: HealthResult) => void }) {
   if (!result.ok) {
     return (
       <Callout tone="danger" icon={<XCircle className="size-4" />}>
         <div className="font-medium">Connection failed</div>
         <div className="break-words">{result.error}</div>
         {result.stderr && <pre className="mt-2 max-h-32 overflow-auto font-mono text-[11px] whitespace-pre-wrap opacity-80">{result.stderr}</pre>}
-        <div className="mt-2 flex items-center gap-2 text-xs opacity-80">
-          <span>The full output is saved in Kumi's log.</span>
-          <Button size="sm" variant="ghost" icon={<FileText className="size-3.5" />} onClick={() => api.revealLog().catch((e) => window.alert(errorMessage(e)))}>
-            Show log
-          </Button>
-        </div>
+        <ShowLog />
       </Callout>
     );
   }
+  if (result.signIn && spec) return <SignInPanel result={result} spec={spec} onResult={onResult} />;
   return (
     <Callout tone="ok" icon={<CheckCircle2 className="size-4" />}>
       <div className="font-medium">
@@ -395,7 +438,7 @@ export function InstallWizard({ source, onClose, onViewInstalled }: { source: Wi
               </pre>
             </details>
           )}
-          {health && <HealthPanel result={health} />}
+          {health && <HealthPanel result={health} spec={spec} onResult={setHealth} />}
           {test.isPending && <Spinner label={testingLabel(spec, true)} />}
         </div>
       )}
@@ -571,7 +614,7 @@ export function InstallWizard({ source, onClose, onViewInstalled }: { source: Wi
               </div>
             );
           })}
-          {health && <HealthPanel result={health} />}
+          {health && <HealthPanel result={health} spec={spec} onResult={setHealth} />}
           {test.isPending && <Spinner label={testingLabel(spec)} />}
         </div>
       )}

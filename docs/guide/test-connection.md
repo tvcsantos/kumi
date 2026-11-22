@@ -15,24 +15,29 @@ The result shows:
 - how long it took;
 - on failure, the error with a hint, and the server's stderr output.
 
+For a server that asks you to sign in, it shows **Server is up** instead. See below.
+
 ::: warning It runs the server's code
 Testing a local server runs third-party code on your machine with your permissions, just like your AI apps do when they start it. Only test servers you trust.
 :::
 
 ## Servers that sign in with OAuth
 
-Many hosted servers (Notion, for example) don't take an API key. They use MCP's OAuth sign-in instead. If such a server answers `401` and you haven't set an `Authorization` header, Kumi:
+Many hosted servers (Notion or Figma, for example) don't take an API key. They use MCP's OAuth sign-in instead. Your apps don't share a sign-in with Kumi: each one signs in on its own the first time it uses the server. So when such a server answers `401` and you haven't set an `Authorization` header, **Test** doesn't open your browser. It checks that the server is up and that it offers OAuth sign-in, and shows **Server is up**.
 
-1. finds the server's authorization server and registers itself as a client;
-2. opens the sign-in page in your browser;
-3. waits up to 5 minutes for you to approve, catching the redirect on `http://127.0.0.1:<port>/callback`;
-4. connects again with the new token and lists the tools.
+What comes next depends on the server:
 
-Kumi keeps the token in memory until you quit, so testing again doesn't ask you to sign in. It isn't saved to disk or shared with your apps: each app signs in on its own the first time it uses the server.
+- **Kumi can sign in.** The server lets apps register with it (dynamic client registration), so the result has a **Sign in to list tools** button. Click it to see the tools. Kumi then:
+  1. opens the sign-in page in your browser;
+  2. waits up to 5 minutes for you to approve, catching the redirect on `http://127.0.0.1:<port>/callback`;
+  3. connects again with the new token and lists the tools.
+- **Only your apps can sign in.** Some servers only accept apps they approved in advance, or refuse to let new apps register. Figma is one. Kumi says so and stops there. Nothing is wrong on your side; your apps sign in with their own registration.
+
+After you sign in, Kumi keeps the token in memory until you quit, so testing again lists the tools straight away. The token isn't saved to disk or shared with your apps.
 
 If you set an `Authorization` header, Kumi sends only that header and skips OAuth.
 
-A server can only do this if it supports dynamic client registration. Servers that need a pre-registered app, or that answer with something other than `401` (GitHub's hosted server, for example), still need a token in the `Authorization` header.
+Servers that answer with something other than `401` (GitHub's hosted server, for example) don't offer OAuth sign-in to Kumi, and still need a token in the `Authorization` header.
 
 ## Timeouts
 
@@ -43,9 +48,9 @@ The first run of an `npx`, `uvx` or `docker` server may download the package or 
 | Error | What to check |
 |---|---|
 | *Is the command installed and on your PATH?* | The runtime (`npx`, `uvx`, `docker`, …) isn't installed, or isn't on your shell's `PATH`. **Settings → Runtimes** shows what Kumi found. |
-| *Check your API key or token.* | The server answered `401 Unauthorized`. |
-| *Sign-in failed: …* | You declined in the browser, or the authorization server returned an error. |
-| *Sign-in timed out after 5 minutes* | The browser sign-in wasn't finished. Test again to restart it. |
+| *Check your API key or token.* | The server answered `401 Unauthorized`, and it doesn't offer OAuth sign-in. |
+| *Sign-in failed: …* | After **Sign in to list tools**: you declined in the browser, or the authorization server returned an error. |
+| *Sign-in timed out after 5 minutes* | After **Sign in to list tools**: the browser sign-in wasn't finished. Click the button again to restart it. |
 | *The credentials don't have access.* | The server answered `403 Forbidden`. |
 | *Timed out after 90s* | The server didn't finish the handshake. Look at its stderr output for clues. |
 

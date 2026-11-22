@@ -124,7 +124,7 @@ function GroupRow({ group, onEdit }: { group: Group; onEdit: (source: WizardSour
       {(health || error || test.isPending) && (
         <div className="space-y-2 px-4 pb-3">
           {test.isPending && <Spinner label={testingLabel(rep.spec)} />}
-          {health && <HealthPanel result={health} />}
+          {health && <HealthPanel result={health} spec={rep.spec} onResult={setHealth} />}
           {error && (
             <Callout tone="danger">
               <div className="flex items-start justify-between gap-2">

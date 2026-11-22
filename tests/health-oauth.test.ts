@@ -14,13 +14,21 @@ async function body(req: IncomingMessage): Promise<string> {
   return s;
 }
 
+interface MockOptions {
+  /** `open` accepts dynamic registration, `forbidden` refuses it (like Figma), `none` doesn't offer it. */
+  registration?: 'open' | 'forbidden' | 'none';
+  /** False: the server answers 401 but publishes no OAuth metadata (it wants an API key). */
+  oauth?: boolean;
+}
+
 /** A remote MCP server behind a minimal OAuth authorization server (discovery, DCR, PKCE code flow). */
-function mockServer() {
+function mockServer({ registration = 'open', oauth = true }: MockOptions = {}) {
   const seen = { registrations: 0, verifiers: [] as string[] };
   let base = '';
   const server: Server = createServer(async (req, res) => {
     const url = new URL(req.url!, base);
     const json = (status: number, data: unknown) => res.writeHead(status, { 'Content-Type': 'application/json' }).end(JSON.stringify(data));
+    if (!oauth && url.pathname !== '/mcp') return res.writeHead(404).end();
     switch (url.pathname) {
       case '/.well-known/oauth-protected-resource/mcp':
       case '/.well-known/oauth-protected-resource':
@@ -30,12 +38,14 @@ function mockServer() {
           issuer: base,
           authorization_endpoint: `${base}/authorize`,
           token_endpoint: `${base}/token`,
-          registration_endpoint: `${base}/register`,
+          ...(registration === 'none' ? {} : { registration_endpoint: `${base}/register` }),
           response_types_supported: ['code'],
           code_challenge_methods_supported: ['S256'],
         });
       case '/register':
         seen.registrations++;
+        if (registration === 'forbidden') return res.writeHead(403, { 'Content-Type': 'text/plain' }).end('Forbidden');
+        if (registration === 'none') return res.writeHead(404).end();
         return json(201, { ...JSON.parse(await body(req)), client_id: 'client-1' });
       case '/authorize': {
         const back = new URL(url.searchParams.get('redirect_uri')!);
@@ -51,7 +61,7 @@ function mockServer() {
       }
       case '/mcp': {
         if (req.headers.authorization !== `Bearer ${TOKEN}`) {
-          res.writeHead(401, { 'WWW-Authenticate': `Bearer resource_metadata="${base}/.well-known/oauth-protected-resource/mcp"` });
+          res.writeHead(401, oauth ? { 'WWW-Authenticate': `Bearer resource_metadata="${base}/.well-known/oauth-protected-resource/mcp"` } : {});
           return res.end();
         }
         const mcp = new McpServer({ name: 'mock', version: '1.0.0' });
@@ -86,17 +96,30 @@ function fakeBrowser() {
   return { opened, open };
 }
 
+const spec = (url: string, headers?: Record<string, string>) => ({ name: 'mock', transport: 'streamable-http' as const, url, headers });
+
 describe('Test connection with OAuth', () => {
   const mock = mockServer();
   beforeAll(() => mock.start());
   afterAll(() => mock.stop());
   afterEach(() => clearOAuthCredentials());
 
-  it('signs in through the browser, then lists tools', async () => {
+  it('stops before the browser and reports the server as up, with sign-in available', async () => {
     const browser = fakeBrowser();
-    const res = await testServer({ name: 'mock', transport: 'streamable-http', url: mock.url() }, browser.open);
+    const before = mock.seen.registrations;
+    const res = await testServer(spec(mock.url()), { openBrowser: browser.open });
+    expect(res).toMatchObject({ ok: true, tools: [], signIn: { available: true } });
+    expect(res.error).toBeUndefined();
+    expect(browser.opened).toHaveLength(0);
+    expect(mock.seen.registrations).toBe(before + 1);
+  });
+
+  it('signs in through the browser when asked, then lists tools', async () => {
+    const browser = fakeBrowser();
+    const res = await testServer(spec(mock.url()), { signIn: true, openBrowser: browser.open });
     expect(res.error).toBeUndefined();
     expect(res.ok).toBe(true);
+    expect(res.signIn).toBeUndefined();
     expect(res.tools.map((t) => t.name)).toEqual(['ping']);
     expect(browser.opened).toHaveLength(1);
     const auth = new URL(browser.opened[0]);
@@ -105,30 +128,94 @@ describe('Test connection with OAuth', () => {
     expect(mock.seen.verifiers.at(-1)).toBeTruthy();
   });
 
-  it('reuses the session tokens on the next test', async () => {
-    const first = fakeBrowser();
-    await testServer({ name: 'mock', transport: 'streamable-http', url: mock.url() }, first.open);
+  it('reuses the client registered by a plain test when signing in', async () => {
+    await testServer(spec(mock.url()), { openBrowser: fakeBrowser().open });
+    const before = mock.seen.registrations;
+    const res = await testServer(spec(mock.url()), { signIn: true, openBrowser: fakeBrowser().open });
+    expect(res.tools.map((t) => t.name)).toEqual(['ping']);
+    expect(mock.seen.registrations).toBe(before);
+  });
+
+  it('lists tools on a plain test once signed in this session', async () => {
+    await testServer(spec(mock.url()), { signIn: true, openBrowser: fakeBrowser().open });
     const again = fakeBrowser();
-    const res = await testServer({ name: 'mock', transport: 'streamable-http', url: mock.url() }, again.open);
+    const res = await testServer(spec(mock.url()), { openBrowser: again.open });
     expect(res.ok).toBe(true);
+    expect(res.signIn).toBeUndefined();
+    expect(res.tools.map((t) => t.name)).toEqual(['ping']);
     expect(again.opened).toHaveLength(0);
   });
 
   it('reports a declined sign-in', async () => {
-    const res = await testServer({ name: 'mock', transport: 'streamable-http', url: mock.url() }, async (url) => {
-      const back = new URL(new URL(url).searchParams.get('redirect_uri')!);
-      back.searchParams.set('error', 'access_denied');
-      back.searchParams.set('state', new URL(url).searchParams.get('state')!);
-      setTimeout(() => void fetch(back), 10);
+    const res = await testServer(spec(mock.url()), {
+      signIn: true,
+      openBrowser: async (url: string) => {
+        const back = new URL(new URL(url).searchParams.get('redirect_uri')!);
+        back.searchParams.set('error', 'access_denied');
+        back.searchParams.set('state', new URL(url).searchParams.get('state')!);
+        setTimeout(() => void fetch(back), 10);
+      },
     });
     expect(res).toMatchObject({ ok: false, error: 'Sign-in failed: access_denied' });
   });
 
   it('skips OAuth when an Authorization header is configured', async () => {
     const browser = fakeBrowser();
-    const res = await testServer({ name: 'mock', transport: 'streamable-http', url: mock.url(), headers: { Authorization: 'Bearer wrong' } }, browser.open);
+    const res = await testServer(spec(mock.url(), { Authorization: 'Bearer wrong' }), { openBrowser: browser.open });
     expect(res.ok).toBe(false);
     expect(res.error).toMatch(/Check your API key or token/);
     expect(browser.opened).toHaveLength(0);
+  });
+});
+
+describe('Test connection with OAuth that Kumi can\'t use', () => {
+  afterEach(() => clearOAuthCredentials());
+
+  async function withMock<T>(options: MockOptions, run: (m: ReturnType<typeof mockServer>) => Promise<T>): Promise<T> {
+    const m = mockServer(options);
+    await m.start();
+    try {
+      return await run(m);
+    } finally {
+      await m.stop();
+    }
+  }
+
+  it('reports a server that refuses registration as up, without sign-in', async () => {
+    await withMock({ registration: 'forbidden' }, async (m) => {
+      const browser = fakeBrowser();
+      const res = await testServer(spec(m.url()), { openBrowser: browser.open });
+      expect(res).toMatchObject({ ok: true, tools: [], signIn: { available: false, reason: "It doesn't let other apps register with it." } });
+      expect(m.seen.registrations).toBeGreaterThan(0);
+      expect(browser.opened).toHaveLength(0);
+    });
+  });
+
+  it('reports a server without registration as up, without sign-in', async () => {
+    await withMock({ registration: 'none' }, async (m) => {
+      const res = await testServer(spec(m.url()), { openBrowser: fakeBrowser().open });
+      expect(res).toMatchObject({ ok: true, signIn: { available: false, reason: 'It only accepts apps registered with it in advance.' } });
+      expect(m.seen.registrations).toBe(0);
+    });
+  });
+
+  it('fails a server that answers 401 without OAuth metadata', async () => {
+    await withMock({ oauth: false }, async (m) => {
+      const res = await testServer(spec(m.url()), { openBrowser: fakeBrowser().open });
+      expect(res.ok).toBe(false);
+      expect(res.signIn).toBeUndefined();
+      expect(res.error).toMatch(/offers no OAuth sign-in.*Check your API key or token/);
+    });
+  });
+
+  it("doesn't call a server up from an earlier test once it's gone", async () => {
+    const m = mockServer({ registration: 'forbidden' });
+    await m.start();
+    const url = m.url();
+    expect((await testServer(spec(url), { openBrowser: fakeBrowser().open })).signIn).toBeDefined();
+    await m.stop();
+    const res = await testServer(spec(url), { openBrowser: fakeBrowser().open });
+    expect(res.ok).toBe(false);
+    expect(res.signIn).toBeUndefined();
   });
 });

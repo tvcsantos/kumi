@@ -168,7 +168,17 @@ export interface HealthResult {
   serverName?: string;
   serverVersion?: string;
   tools: { name: string; description?: string }[];
+  /**
+   * Set when the server answered and asks for OAuth sign-in, which this test didn't do, so `tools` is empty.
+   * `available` says whether Kumi can sign in (`healthTest(spec, { signIn: true })`); `reason` says why not.
+   */
+  signIn?: { available: boolean; reason?: string };
   error?: string;
   stderr?: string;
   durationMs: number;
+}
+
+export interface HealthTestOptions {
+  /** Sign in through the browser when the server asks for OAuth, then list its tools. */
+  signIn?: boolean;
 }

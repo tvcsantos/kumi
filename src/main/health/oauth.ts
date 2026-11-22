@@ -1,12 +1,14 @@
 // MCP OAuth for "Test connection": the SDK drives discovery, dynamic client registration and PKCE;
 // we open the browser and catch the redirect on a loopback server (RFC 8252).
 // Credentials live in memory for this app session only, so a re-test doesn't ask to sign in again.
+// A test that isn't interactive goes as far as it can without the user (discovery, registration) and stops
+// before the browser, so Kumi can tell whether it could sign in at all.
 
 import { randomBytes } from 'node:crypto';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import type { OAuthClientProvider, OAuthDiscoveryState } from '@modelcontextprotocol/sdk/client/auth.js';
-import type { OAuthClientInformationMixed, OAuthClientMetadata, OAuthTokens } from '@modelcontextprotocol/sdk/shared/auth.js';
+import type { AuthorizationServerMetadata, OAuthClientInformationMixed, OAuthClientMetadata, OAuthTokens } from '@modelcontextprotocol/sdk/shared/auth.js';
 
 const CALLBACK_PATH = '/callback';
 
@@ -21,6 +23,12 @@ interface Credentials {
 const store = new Map<string, Credentials>();
 
 export type OpenBrowser = (url: string) => Promise<void>;
+
+export interface SessionOptions {
+  openBrowser: OpenBrowser;
+  /** Open the sign-in page. When false, the session stops where the browser would open. */
+  interactive: boolean;
+}
 
 function page(title: string, body: string): string {
   return `<!doctype html><meta charset="utf-8"><title>${title}</title><body style="font:16px system-ui;margin:4rem auto;max-width:32rem;text-align:center"><h1 style="font-size:1.4rem">${title}</h1><p>${body}</p></body>`;
@@ -43,13 +51,14 @@ export class OAuthSession {
   private verifier = '';
   private expectedState = randomBytes(16).toString('hex');
   private redirected = false;
+  private challenged = false;
   private settle?: { resolve: (code: string) => void; reject: (e: Error) => void };
   private early?: { code?: string; error?: Error };
 
   private constructor(
     private readonly server: Server,
-    creds: Credentials,
-    private readonly openBrowser: OpenBrowser,
+    private readonly creds: Credentials,
+    private readonly options: SessionOptions,
   ) {
     const self = this;
     this.provider = {
@@ -81,7 +90,11 @@ export class OAuthSession {
       saveDiscoveryState: (s) => {
         creds.discovery = s;
       },
-      discoveryState: () => creds.discovery,
+      // The SDK reads this first thing in `auth()`, which it runs only when the server asks for credentials.
+      discoveryState: () => {
+        self.challenged = true;
+        return creds.discovery;
+      },
       invalidateCredentials: (scope) => {
         if (scope === 'all' || scope === 'client') creds.client = undefined;
         if (scope === 'all' || scope === 'tokens') creds.tokens = undefined;
@@ -90,7 +103,7 @@ export class OAuthSession {
       },
       redirectToAuthorization: async (url) => {
         self.redirected = true;
-        await self.openBrowser(url.toString());
+        if (self.options.interactive) await self.options.openBrowser(url.toString());
       },
     };
     server.on('request', (req, res) => {
@@ -113,7 +126,7 @@ export class OAuthSession {
   }
 
   /** Starts the loopback listener, reusing the port a stored client was registered with when possible. */
-  static async start(serverUrl: string, openBrowser: OpenBrowser): Promise<OAuthSession> {
+  static async start(serverUrl: string, options: SessionOptions): Promise<OAuthSession> {
     const server = createServer();
     let creds = store.get(serverUrl);
     let port: number;
@@ -128,12 +141,27 @@ export class OAuthSession {
       creds = { redirectUrl: `http://127.0.0.1:${port}${CALLBACK_PATH}` };
       store.set(serverUrl, creds);
     }
-    return new OAuthSession(server, creds, openBrowser);
+    return new OAuthSession(server, creds, options);
   }
 
-  /** True once the SDK sent the user to the authorization page. */
+  /** True once the SDK got as far as the authorization page: Kumi has a client and could sign in. */
   get awaitingSignIn(): boolean {
     return this.redirected;
+  }
+
+  /** True once the server asked for credentials during this session (the SDK started its OAuth flow). */
+  get signInStarted(): boolean {
+    return this.challenged;
+  }
+
+  /** The authorization server's metadata, once discovery found it. Its absence means the server doesn't speak OAuth. */
+  get authServerMetadata(): AuthorizationServerMetadata | undefined {
+    return this.creds.discovery?.authorizationServerMetadata;
+  }
+
+  /** True when Kumi holds a client for this server, registered now or in an earlier test. */
+  get hasClient(): boolean {
+    return !!this.creds.client;
   }
 
   /** Resolves with the authorization code from the browser redirect. */
