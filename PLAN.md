@@ -6,114 +6,135 @@
 
 A cross-platform Electron desktop app where users can:
 
-1. **Browse** a catalog of MCP (Model Context Protocol) servers (search, categories, details, README).
-2. **Choose target clients**: Claude (Desktop + Code), VS Code, Cursor, OpenAI Codex, GitHub Copilot.
+1. **Browse** a catalog of MCP (Model Context Protocol) servers from one or more registries (search, featured, categories, details).
+2. **Choose target apps**: Claude Desktop, Claude Code, VS Code (incl. GitHub Copilot agent mode), Cursor, OpenAI Codex, GitHub Copilot CLI, OpenCode, Pi, Junie, Air in JetBrains IDEs, and Zed.
 3. **Fill in settings** (env vars, API keys, arguments, URLs, headers) in a form generated from the server's metadata.
-4. **Install**: Kumi writes the correct config, in the correct format and location, for each selected client.
-5. **Manage**: view what's installed where, edit settings, enable/disable, update, uninstall, and roll back.
+4. **Install**: Kumi writes the correct config, in the correct format and location, for each selected app.
+5. **Manage**: view what's installed where, test it, edit settings, uninstall, and restore backups.
 
 ### Non-goals (v1)
 
-- Hosting or running MCP servers ourselves. Clients run them; Kumi only configures them.
-- Running our own registry backend. We use the official MCP Registry plus a curated overlay.
+- Hosting or running MCP servers ourselves. Apps run them; Kumi only configures them (and briefly starts them for Test connection).
+- Running our own registry backend. We use the official MCP Registry, registries the user adds, and a curated overlay.
 - Mobile or web versions.
 
 ---
 
-## 2. Target clients & config formats
+## 2. Target apps & config formats
 
-Each client gets an **adapter** that knows where its config lives, its format, and which features it supports. This table is the core domain knowledge; every row needs a fixture-based test suite. Formats change between client releases, so check each against current vendor docs while building its adapter.
+Each app gets an **adapter** that knows where its config lives, its format, and which transports it supports. This table is the core domain knowledge; every row needs fixture-based tests. Formats change between app releases, so check each against current vendor docs when touching its adapter. The user-facing copy of this table is `docs/reference/apps.md`.
 
-| Client | Scope | Path (macOS / Linux / Windows) | Format | Root key | Notes |
+| App | Scope | Path (macOS / Linux / Windows) | Format | Root key | Notes |
 |---|---|---|---|---|---|
-| **Claude Desktop** | user | `~/Library/Application Support/Claude/claude_desktop_config.json` / `~/.config/Claude/claude_desktop_config.json` / `%APPDATA%\Claude\claude_desktop_config.json` | JSON | `mcpServers` | Mostly stdio. Remote servers through `mcp-remote` or the in-app Connectors UI. Needs an app restart. |
-| **Claude Code** | user | `~/.claude.json` | JSON | `mcpServers` (top level) | `type`: `stdio` \| `http` \| `sse`. The file also holds a lot of unrelated state, so patch it surgically. |
+| **Claude Desktop** | user | `~/Library/Application Support/Claude/claude_desktop_config.json` / `~/.config/Claude/claude_desktop_config.json` / `%APPDATA%\Claude\claude_desktop_config.json` | JSON | `mcpServers` | stdio only. Remote servers through `mcp-remote`. Needs an app restart. |
+| **Claude Code** | user | `~/.claude.json` (or `$CLAUDE_CONFIG_DIR`) | JSON | `mcpServers` (top level) | `type`: `stdio` \| `http` \| `sse`. The file also holds a lot of unrelated state, so patch it surgically. |
 | | local | `~/.claude.json` → `projects["<abs path>"].mcpServers` | JSON | | Per-project, private to the user. |
 | | project | `<repo>/.mcp.json` | JSON | `mcpServers` | Shared through git. Supports `${VAR}` expansion. |
-| | (alt) | `claude mcp add-json <name> '<json>' --scope …` | CLI | | Preferred path when the `claude` CLI is on PATH. |
-| **VS Code** (incl. **GitHub Copilot** agent mode) | user | `~/Library/Application Support/Code/User/mcp.json` (+ `Code - Insiders`, profiles) | **JSONC** | `servers` (+ `inputs`) | Has `inputs` with `promptString` + `password: true`, so VS Code prompts for secrets and stores them itself. |
+| | (alt) | `claude mcp add-json <name> '<json>' --scope …` | CLI | | Not used yet. |
+| **VS Code** (incl. **GitHub Copilot** agent mode) | user | `~/Library/Application Support/Code/User/mcp.json` (+ `Code - Insiders`, profiles) | **JSONC** | `servers` (+ `inputs`) | `inputs` with `promptString` + `password: true` lets VS Code prompt for secrets and store them itself. |
 | | workspace | `<repo>/.vscode/mcp.json` | JSONC | `servers` | |
-| | (alt) | `code --add-mcp '<json>'` | CLI | | |
+| | (alt) | `code --add-mcp '<json>'` | CLI | | Not used yet. |
 | **Cursor** | user | `~/.cursor/mcp.json` | JSON | `mcpServers` | Remote: `url` + `headers`. |
 | | project | `<repo>/.cursor/mcp.json` | JSON | `mcpServers` | |
 | **OpenAI Codex** (CLI / IDE ext) | user | `~/.codex/config.toml` (or `$CODEX_HOME`) | **TOML** | `[mcp_servers.<name>]` | `command`, `args`, `env`, `env_vars` (pass-through), `url`, `bearer_token_env_var`, timeouts. |
-| | (alt) | `codex mcp add <name> -- <cmd>` | CLI | | |
+| | (alt) | `codex mcp add <name> -- <cmd>` | CLI | | Not used yet. |
 | **GitHub Copilot CLI** | user | `~/.copilot/mcp-config.json` | JSON | `mcpServers` | Separate from VS Code. |
 | **OpenCode** | user | `~/.config/opencode/opencode.json` (follows `XDG_CONFIG_HOME`) | **JSONC** | `mcp.servers` | `type`: `local` (`command` is one array, env in `environment`) \| `remote` (`url`, `headers`, Streamable HTTP only; SSE via `mcp-remote`). |
 | | project | `<repo>/opencode.json` | JSONC | `mcp.servers` | Also read from `.opencode/opencode.json`. |
-| **Pi** | user | `~/.pi/agent/mcp.json` (or `$PI_CODING_AGENT_DIR`) | JSON | `mcpServers` | Built-in MCP (Pi 0.99+). `command` selects stdio, `url` selects Streamable HTTP; legacy SSE is rejected, so it goes through `mcp-remote`. |
+| **Pi** | user | `~/.pi/agent/mcp.json` (or `$PI_CODING_AGENT_DIR`) | JSON | `mcpServers` | Built-in MCP (Pi 0.99+). `command` selects stdio, `url` selects Streamable HTTP; SSE through `mcp-remote`. |
 | | project | `<repo>/.pi/mcp.json` | JSON | `mcpServers` | Read only after project trust is granted. |
+| **Junie** (CLI + JetBrains plugin) | user | `~/.junie/mcp/mcp.json` | JSON | `mcpServers` | Shared by the CLI and the IDE plugin. `command` or `url`, no `type`; SSE through `mcp-remote`. |
+| | project | `<repo>/.junie/mcp/mcp.json` | JSON | `mcpServers` | |
+| **Air in JetBrains IDEs** | user | `~/.jetbrains/mcp/mcp.json` | JSON | `mcpServers` | The IDE plugin, not the standalone Air app. One global file, no project scope. Explicitly no SSE, so it goes through `mcp-remote`. |
+| **Zed** | user | `~/.config/zed/settings.json` (macOS ignores `XDG_CONFIG_HOME`) / `$XDG_CONFIG_HOME/zed/settings.json` / `%APPDATA%\Zed\settings.json` | **JSONC** | `context_servers` | Shares the file with every other Zed setting. Zed reloads servers on change. Remote is Streamable HTTP only. |
+| | project | `<repo>/.zed/settings.json` | JSONC | `context_servers` | |
 | **Copilot in JetBrains / Visual Studio** | user/sln | JetBrains: `mcp.json` under the Copilot plugin config dir; VS: `.mcp.json` / `%USERPROFILE%\.mcp.json` | JSON | `servers` | Phase 3. |
 
-Clients to consider later: Windsurf, Zed, Cline/Roo, Gemini CLI, Continue, LM Studio, Goose. The adapter design makes each one about a day of work.
+Apps to consider later: Windsurf, Cline/Roo, Gemini CLI, Continue, LM Studio, Goose, the standalone Air app. Most JSON apps are a small `createJsonAdapter` definition plus fixtures (see `docs/contributing/adding-an-app.md`).
 
 ### Key takeaways
 
 - **Three formats**: JSON, JSONC (with comments), and TOML. All writes must **preserve formatting, comments, and unknown keys**.
-- **Different schemas for the same thing**: `mcpServers` vs `servers`, `type` field present or absent, `url` vs `serverUrl`, and so on. So Kumi needs a **canonical internal model** with one renderer per client.
-- **Scopes**: user (global) vs project/workspace vs local. The UI must let the user pick a scope and, for project scope, a folder.
-- **Some clients ship a CLI** (`claude mcp`, `code --add-mcp`, `codex mcp`). Prefer the CLI when it exists because the vendor keeps it compatible. Fall back to direct file editing.
+- **Different schemas for the same thing**: `mcpServers` vs `servers` vs `context_servers` vs `mcp.servers`, `type` field present or absent, `command` as a string or an array. So Kumi has a **canonical internal model** with one renderer per app.
+- **Scopes**: user (global) vs project/workspace vs local. The wizard lets the user pick a scope and, for project scope, a folder.
+- **Transports differ per app.** A transport an app can't use natively but can reach through `npx mcp-remote` is bridged; anything else marks the app incompatible.
+- **Some apps ship a CLI** (`claude mcp`, `code --add-mcp`, `codex mcp`). Kumi edits files directly today; the CLIs remain an option for apps whose files prove too fragile.
 
 ---
 
 ## 3. Catalog / data source
 
-### Primary: Official MCP Registry
-- API: `https://registry.modelcontextprotocol.io/v0/servers` (paginated with a cursor, supports `search`, and returns versions).
-- Each entry is a `server.json` with:
-  - `packages[]`: `registryType` (`npm`, `pypi`, `oci`, `nuget`, `mcpb`), `identifier`, `version`, `transport`, `runtimeHint` (`npx`, `uvx`, `docker`, …), `runtimeArguments`, `packageArguments`, and **`environmentVariables[]`** (`name`, `description`, `isRequired`, `isSecret`, `default`, `format`, `choices`).
-  - `remotes[]`: `type` (`streamable-http` \| `sse`), `url`, and `headers[]` (with the same input metadata as env vars).
-- **The install form is generated from these fields**, so no hand-written forms are needed for most servers.
+### Registries
+- **Official MCP Registry**: `https://registry.modelcontextprotocol.io/v0.1` (`/v0` timed out). Paginated with a cursor, supports `search`, returns versions. Some lookups take ~15s, so the client uses a 25s timeout.
+- **User-added registries** (Settings → Registries, or the first-run screen):
+  - **MCP Registry API** servers. Pasting just a host probes `/v0.1` then `/v0`.
+  - **Static JSON files** listing `server.json` entries, from an `https` URL or a local path. Searched locally; a local file is re-read when it changes.
+  - Per-registry **request headers**. Secret ones are encrypted with `safeStorage`, sent only over `https` (or `localhost`), and never sent back to the window. Kumi refuses to save them if the keychain isn't available.
+  - Kumi checks a registry answers before saving it.
+- The official registry is on by default, switched off when the user adds their own during setup (with a checkbox to keep it), and turned back on if nothing else is configured.
+- **Merged search**: `Catalog` queries every enabled registry in parallel. Its cursor is a base64 map of per-registry cursors. A failing registry is reported next to the others' results. Servers whose status isn't `active` are hidden.
+- **Cache**: `HttpCache` keeps responses in `~/.kumi/cache/registry.json`. Hits under 10 minutes are served from disk; otherwise it fetches with retries and falls back to the stale copy offline. Each registry has a **Refresh** that bypasses the cache.
 
-### Secondary: Kumi curated overlay (a JSON file in a GitHub repo, fetched and cached)
-- Featured servers, categories and tags, icons, screenshots, a "verified" badge, better descriptions.
-- **Overrides and fixes** for servers with incomplete `server.json` (missing env vars, wrong runtime hints).
-- Per-client compatibility notes, for example "Claude Desktop needs `mcp-remote` for this remote server".
+Each entry is a `server.json` with:
+- `packages[]`: `registryType` (`npm`, `pypi`, `oci`, `nuget`, `mcpb`), `identifier`, `version`, `transport`, `runtimeHint` (`npx`, `uvx`, `docker`, `dnx`, …), `runtimeArguments`, `packageArguments`, and **`environmentVariables[]`** (`name`, `description`, `isRequired`, `isSecret`, `default`, `format`, `choices`).
+- `remotes[]`: `type` (`streamable-http` \| `sse`), `url`, and `headers[]` (with the same input metadata as env vars).
 
-### Tertiary
-- User-added **custom servers** (paste JSON, point at a local command, or enter a remote URL).
-- **Additional registries** (company-internal registries implementing the same API). Configurable in Settings.
+**The install form is generated from these fields** (`src/shared/variants.ts`), so no hand-written forms are needed for most servers. Package versions are pinned (`pkg@1.2.3`).
 
-Cache the catalog locally (SQLite or JSON) for offline browsing and fast search. Refresh in the background.
+### Curated overlay
+- Today: `src/shared/featured.ts`, shipped with the app (featured servers and their categories).
+- Planned: a JSON file in a GitHub repo, fetched and cached, with icons, screenshots, a "verified" badge, better descriptions, **overrides** for incomplete `server.json` (missing env vars, wrong runtime hints), per-app compatibility notes, and a denylist.
+
+### Custom servers
+- **Custom server** in Installed opens the same wizard with a plain form first: name, type (stdio / Streamable HTTP / SSE), command + args + env, or URL + headers. Env vars and headers are treated as secrets by name (`key`, `token`, `secret`, `auth`, …).
+- Not yet: paste a JSON entry.
 
 ---
 
 ## 4. Architecture
 
 ```
-┌─────────────────────────── Electron ───────────────────────────┐
-│ Renderer (React + TS, sandboxed, contextIsolation)             │
-│   Catalog · Server detail · Install wizard · Installed · Settings│
-│                 │  typed IPC (zod-validated)                   │
-│ Preload  ── exposes `window.kumi.*` (narrow API only)         │
-│                 │                                              │
-│ Main process (Node)                                            │
-│  ├─ CatalogService     registry client + overlay + cache       │
-│  ├─ ClientRegistry     detect installed clients                │
-│  ├─ Adapters/          claude-desktop, claude-code, vscode,    │
-│  │                     cursor, codex, copilot-cli, …           │
-│  ├─ ConfigIO           JSON / JSONC / TOML format-preserving   │
-│  ├─ InstallService     plan → diff → backup → apply → verify   │
-│  ├─ SecretsService     OS keychain (safeStorage / keytar)      │
-│  ├─ RuntimeService     detect node/npx, uv/uvx, docker, python │
-│  ├─ HealthService      spawn + MCP handshake (tools/list)      │
-│  ├─ StateStore         ~/.kumi/state.json (what we installed)   │
-│  └─ BackupService      timestamped backups + restore           │
-└────────────────────────────────────────────────────────────────┘
+┌──────────────────────────── Electron ─────────────────────────────┐
+│ Renderer (React, sandboxed, context isolation)                    │
+│   Welcome · Discover · Server detail · Install wizard · Installed │
+│   · Settings · About                                              │
+│                     │  window.kumi (typed, zod-validated IPC)     │
+│ Preload  ───────────┘                                             │
+│                                                                   │
+│ Main process (Node)                                               │
+│  ├─ Catalog          merged search over every enabled registry    │
+│  │   ├─ ApiRegistry   MCP Registry API client                     │
+│  │   ├─ FileRegistry  static JSON file (URL or path)              │
+│  │   └─ HttpCache     retries + disk cache, shared by all         │
+│  ├─ RegistryStore    registries.json, encrypted header secrets    │
+│  ├─ Adapters         one per app: paths, format, render, parse    │
+│  ├─ config-io        JSON/JSONC/TOML edits, atomic write, diff    │
+│  ├─ InstallService   plan → preview → apply, ownership, uninstall │
+│  ├─ BackupService    copies before every write, restore           │
+│  ├─ StateStore       state.json: what Kumi installed, where       │
+│  ├─ SettingsStore    settings.json                                │
+│  ├─ SecretBox        Electron safeStorage (OS keychain)           │
+│  ├─ runtime          detect npx / uvx / docker / …                │
+│  ├─ health           MCP handshake + tools/list, OAuth sign-in    │
+│  ├─ updater          check, download, install app updates         │
+│  ├─ host             PATH and config vars from the login shell    │
+│  ├─ tls              trust the OS certificate store too           │
+│  └─ log              ~/.kumi/logs/kumi.log                        │
+└───────────────────────────────────────────────────────────────────┘
 ```
 
 ### Tech stack
-- **Electron** + **electron-vite** (Vite for main, preload, and renderer), **TypeScript** everywhere.
-- **React** + **TanStack Query** (async state) + **Tailwind** + **shadcn/ui** (or Radix) for UI.
-- **Forms**: `react-hook-form` + `zod`. The schema is built at runtime from `environmentVariables`, `packageArguments`, and `headers`.
+- **Electron** + **electron-vite**, **TypeScript** everywhere.
+- **React** + **TanStack Query** + **Tailwind**, with Kumi's own components (`components/ui.tsx`) and **lucide** icons.
+- **Forms**: built at runtime by `src/shared/variants.ts` from `environmentVariables`, `packageArguments`, and `headers` (fields, validation, resolution into a `ServerSpec`). It's pure and shared, so the renderer shows a live preview and main can trust the result.
 - **Config I/O**:
-  - JSON / JSONC: `jsonc-parser` (`modify` + `applyEdits` preserves comments and formatting).
-  - TOML: a format-preserving editor (`@decimalturn/toml-patch` / `toml-patch`), with `smol-toml` for parsing and validation.
+  - JSON / JSONC: `jsonc-parser` (`modify` + `applyEdits`).
+  - TOML: `smol-toml` for parsing. Kumi only removes whole `[mcp_servers.<name>]` sections it owns and appends freshly rendered ones, so the rest of the file stays byte-identical.
 - **MCP client** for health checks: `@modelcontextprotocol/sdk`.
-- **Secrets**: Electron `safeStorage` for at-rest encryption of Kumi's own store, and the OS keychain for secure-launch mode (see §6).
-- **Packaging**: `electron-builder` (dmg / nsis / AppImage + deb), `electron-updater` for auto-update, code signing plus macOS notarization.
-- **Testing**: Vitest (unit + adapter fixtures), Playwright for Electron (E2E).
-- **Lint/format**: ESLint + Prettier (or Biome).
+- **Secrets**: Electron `safeStorage`.
+- **Packaging**: `electron-builder` (dmg + zip for x64 and arm64, NSIS, AppImage + deb). Updates through `electron-updater` on Windows/Linux and a custom macOS updater (§16).
+- **Testing**: Vitest. No E2E yet.
+- **Checks**: `tsc` typecheck. No linter or formatter configured yet.
 
 ### Canonical model
 
@@ -121,77 +142,74 @@ Cache the catalog locally (SQLite or JSON) for offline browsing and fast search.
 type Transport = 'stdio' | 'streamable-http' | 'sse';
 
 interface ServerSpec {
-  name: string;                      // config key, e.g. "github"
+  name: string;                       // config key, e.g. "github"
   transport: Transport;
-  // stdio
-  command?: string;                  // "npx" | "uvx" | "docker" | abs path
+  command?: string;                   // stdio
   args?: string[];
-  env?: Record<string, SecretRef | string>;
-  cwd?: string;
-  // remote
-  url?: string;
-  headers?: Record<string, SecretRef | string>;
-  // provenance
-  source: { registry: string; id: string; version: string } | { custom: true };
+  env?: Record<string, string>;
+  url?: string;                       // remote
+  headers?: Record<string, string>;
+  secretEnv?: string[];               // which values are secrets
+  secretHeaders?: string[];
+  secretArgs?: number[];
 }
 
-type SecretRef = { secret: string };  // key into SecretsService
-
 interface ClientAdapter {
-  id: ClientId;                      // 'claude-desktop' | 'claude-code' | 'vscode' | ...
+  id: ClientId;
   displayName: string;
-  scopes: Scope[];                   // 'user' | 'project' | 'local'
-  detect(): Promise<Detection>;      // installed? version? config paths?
-  capabilities: {
-    transports: Transport[];
-    envInterpolation: boolean;       // e.g. ${VAR} in .mcp.json
-    secretInputs: boolean;           // VS Code `inputs`
-    needsRestart: boolean;
-    cli?: { bin: string };
-  };
-  list(scope: ScopeRef): Promise<InstalledEntry[]>;     // read existing (incl. not-ours)
-  render(spec: ServerSpec, scope: ScopeRef): ConfigPatch; // canonical → client format
-  apply(patch: ConfigPatch): Promise<ApplyResult>;      // write (CLI or file)
-  remove(name: string, scope: ScopeRef): Promise<void>;
-  parse(raw: unknown): ServerSpec;   // client format → canonical (for import/edit)
+  scopes: ('user' | 'project' | 'local')[];
+  transports: Transport[];            // supported natively
+  bridgeable: Transport[];            // reachable through mcp-remote
+  needsRestart: boolean;
+  supportsSecureSecrets: boolean;
+  configPath(env: HostEnv, scope: ScopeRef): string;
+  detect(env: HostEnv): Promise<boolean>;
+  readServers(text: string, scope: ScopeRef): Record<string, ServerSpec>;
+  upsert(text: string, spec: ServerSpec, scope: ScopeRef, opts: RenderOptions): EditResult;
+  remove(text: string, name: string, scope: ScopeRef): string;
 }
 ```
 
-When a client doesn't support a transport (for example a remote server on Claude Desktop), the adapter either **adapts** it (wrap with `npx mcp-remote <url>`) or marks the client **incompatible** in the UI and explains why.
+Adapters are pure text-in, text-out. `HostEnv` gives them the home folder, platform, environment and a `which`, so tests point everything at a temporary folder. `createJsonAdapter` (`clients/common.ts`) builds most of them and applies the shared rules:
+
+- **Bridging** (`adaptTransport`): a `bridgeable` transport becomes `npx -y mcp-remote <url> …`; anything else is rejected.
+- **Windows** (`windowsWrap`): `npx` and other `.cmd` shims become `cmd /c npx …`.
+- **The guard** (`assertOnlyServerChanged`): the parsed file before and after must be equal once the server entry is removed from both, or the edit is refused. Codex (TOML) has its own adapter with the same guard.
 
 ---
 
 ## 5. Install flow (UX)
 
-1. **Catalog**: search, filters (category, transport, runtime, verified), and cards with icon, name, short description, and badges.
-2. **Server detail**: README, tools exposed (from registry metadata or a cached health check), required env vars, source repo, version, license.
-3. **Click "Install"** to open the wizard:
-   1. **Pick clients**: checkboxes for detected clients. Undetected ones are greyed out with an "install it" link. Show compatibility per client.
-   2. **Pick scope** per client: User (global), or Project (folder picker), or Local for Claude Code.
-   3. **Pick a package/remote variant** if there are several (for example `npx` vs `docker` vs hosted remote).
-   4. **Configure**: an auto-generated form with required/optional fields, secrets masked, defaults filled, inline validation (format, choices), and help text from descriptions. Also an editable server name (the config key) with collision detection.
-   5. **Prerequisites check**: is `npx`/`uvx`/`docker` available? If not, show how to install it.
-   6. **Review**: a per-file **diff preview** of exactly what will change in each config file. Secrets are masked in the preview.
-   7. **Apply**: back up each file → write → re-read and validate → record in StateStore.
-   8. **Result**: success per client, a "Restart Claude Desktop" hint or button where needed, and an optional **Test connection** step.
-4. **Installed view**: a matrix of servers × clients with status. Supports edit settings (re-runs the wizard prefilled), enable/disable, uninstall per client or everywhere, update when a new version is available, and open the config file.
-5. **Import / discover**: on first run, scan all client configs and show servers the user installed by hand. Offer to "adopt" them into Kumi or sync them to other clients ("copy my Cursor servers to Claude Code").
+1. **First run (Welcome)**: choose registries (official, your own, or both). Apps are detected by command on `PATH` or config folder.
+2. **Discover**: search across registries, featured servers by category, cards with badges.
+3. **Server detail**: description, variants (packages and remotes), required settings, source repo, version.
+4. **Install wizard**:
+   1. **Pick apps**: detected apps first; undetected ones can still be chosen (Kumi creates the file). Compatibility per app, including bridging.
+   2. **Pick scope** per app: User, Project (folder picker), or Local for Claude Code.
+   3. **Pick a variant** if there are several (for example `npx` vs `docker` vs hosted remote).
+   4. **Configure**: generated form with required/optional fields, secrets masked, defaults, validation, help text. Editable server name with collision detection. **Test connection** is available here.
+   5. **Prerequisites check**: is `npx`/`uvx`/`docker` available?
+   6. **Review**: per-file **diff preview**, secrets masked, plus "What will run".
+   7. **Apply**: back up → write atomically → re-read and validate → record ownership.
+   8. **Result**: per app, a restart hint where needed, and Test connection.
+5. **Installed**: every server in every app's config (global scope and known project folders), grouped by name and marked *managed*, *partly managed* or *added manually*. Actions: Test connection, Edit (reopens the wizard prefilled, can add more apps), Remove everywhere, and per entry open config / remove. Project folders can be added or untracked. Backups and restore live in Settings.
+6. **Import / discover**: hand-added servers show up in Installed right away; editing one adopts it. Still to do: explicit "adopt", "copy to other apps" as one action, enable/disable, update.
 
 ---
 
 ## 6. Secrets strategy
 
-Most clients expect secret values **inline in their config file** (plaintext). Kumi offers modes, chosen per install with a sensible default:
+Most apps expect secret values **inline in their config file** (plaintext). Kumi offers modes per install, with a default in Settings → Secrets:
 
-| Mode | How | Pros | Cons |
-|---|---|---|---|
-| **Inline** (default for most clients) | Write the value into the client config | Works everywhere | Plaintext on disk (same as manual setup) |
-| **Client-native secure** | VS Code: `inputs` + `password: true` (VS Code prompts and stores). Codex: `env_vars` / `bearer_token_env_var` pass-through. `.mcp.json`: `${VAR}` | No plaintext written by Kumi | Only some clients; the user must provide the env or a prompt |
-| **Kumi secure launch** (opt-in) | Config points to `kumi-run <server-id>`, a small launcher that pulls secrets from the OS keychain and `exec`s the real command with env injected | No plaintext, one place to rotate keys | Extra moving part; stdio only; the launcher must be installed on PATH |
+| Mode | How | Status |
+|---|---|---|
+| **Inline** (default) | Write the value into the app config. | Done, all apps. |
+| **Client-native secure** | VS Code: an `inputs` entry (`promptString`, `password: true`, id `kumi.<server>.<name>`) referenced as `${input:…}`; VS Code prompts and stores it. Apps without secure storage fall back to inline, and the review says so. | Done for VS Code. Not yet: Codex `env_vars` / `bearer_token_env_var`, `.mcp.json` `${VAR}`. |
+| **Kumi secure launch** (opt-in) | Config points to `kumi-run <server-id>`, a launcher that reads secrets from the OS keychain and `exec`s the real command. | Phase 3. |
 
 Rules:
-- Never log secret values. Mask them in diffs, backups metadata, and the UI.
-- Kumi's own state stores only `SecretRef`s. Values live in the keychain.
+- Never log secret values. Mask them in diffs, "What will run", backups metadata, and the UI.
+- So installs can be edited later, Kumi's `state.json` keeps entered values: plain ones as is, secret ones encrypted with `safeStorage`. Without a working keychain, secret values aren't kept and editing asks for them again.
 - Show the user clearly which mode is in use and where the secret ends up.
 
 ---
@@ -200,35 +218,37 @@ Rules:
 
 Users' config files hold hand-tuned state. Breaking them destroys trust.
 
-- **Read → modify AST → write**. Never regenerate a whole file. Preserve comments, ordering, whitespace, and unknown keys.
-- **Atomic writes**: write a temp file in the same dir, `fsync`, then `rename`. Keep the original file mode.
-- **Backups** before every write: `~/.kumi/backups/<client>/<timestamp>-<file>`, with retention N=20 and one-click restore in the UI.
-- **Concurrency**: check mtime/hash between plan and apply. If the file changed, re-plan and re-show the diff.
-- **Ownership tracking** (`~/.kumi/state.json`): record which entries Kumi created (client, scope, path, key, spec hash). Never delete or modify entries Kumi doesn't own without explicit confirmation.
-- **Validation after write**: re-parse, confirm the entry round-trips through `adapter.parse`.
-- **Large, shared files** (`~/.claude.json` is constantly rewritten by Claude Code): prefer the `claude` CLI when available. Otherwise do a minimal JSON patch with a retry on conflict, and warn if Claude Code is running.
-- **File watching** (chokidar): refresh the Installed view when configs change externally.
+- **Read → edit → write**, never regenerate a whole file. JSON/JSONC edits go through `jsonc-parser`: comments and unrelated keys survive, but lines next to the edit may be reformatted. TOML outside Kumi's sections stays byte-identical. Every write passes the guard (§4).
+- **Atomic writes**: temp file in the same dir, `fsync`, `rename`, original mode kept. New files are `0600`.
+- **Backups** before every write: `~/.kumi/backups/<app>/<timestamp>-<id>-<file>`, indexed in `backups/index.json`, last 20 per file. Restore backs up the current file first, so it can be undone. A backup of a file that didn't exist restores by deleting it.
+- **Concurrency**: the plan stores a hash of each file. If it changed before apply, apply stops and asks the user to review again.
+- **Ownership tracking** (`~/.kumi/state.json`): which entries Kumi created (app, scope, path, key). Kumi asks before replacing or removing entries it doesn't own.
+- **Validation after write**: re-read and confirm the entry is there.
+- **Several targets in one file** (Claude Code's user and local scopes both live in `~/.claude.json`): edits are chained in one write.
+- Not yet: warn when Claude Code is running before patching `~/.claude.json`; watch config files and refresh Installed on external changes (today it re-reads every time it's shown).
 
 ---
 
 ## 8. Health check / "Test connection"
 
-- For stdio: spawn the command with the resolved env, perform the MCP `initialize` handshake, call `tools/list`, then shut down. Enforce a timeout and capture stderr for diagnostics.
-- For remote: connect with Streamable HTTP (fall back to SSE) and send headers.
-- Show the tool list, server info and version, and errors with friendly hints ("401: check your API key", "npx not found").
-- Warn clearly that this **runs the server's code locally**.
-- OAuth-based remote servers: Test connection runs the MCP OAuth flow (discovery, dynamic client registration, PKCE, browser sign-in with a loopback redirect). Tokens stay in memory for the app session.
+- **stdio**: spawn the command with the resolved env, run `initialize`, call `tools/list`, shut down. Timeout, stderr captured.
+- **Remote**: Streamable HTTP with headers; on `404`/`405`, retry with SSE.
+- Shows server name and version, tools with descriptions, duration, and errors with hints and stderr.
+- Warns that this **runs the server's code locally**.
+- **OAuth servers**: on a `401` without an `Authorization` header, Kumi doesn't open the browser. It checks the server offers OAuth and shows **Server is up**. If the server supports dynamic client registration, **Sign in to list tools** runs the MCP OAuth flow (discovery, registration, PKCE, browser sign-in with a loopback redirect). Tokens stay in memory for the app session.
+- Failures are written to `~/.kumi/logs/kumi.log` (rotated at 2 MB to `kumi.old.log`).
+- TLS trusts the OS certificate store (macOS Keychain, Windows store, Linux system bundles) and the bundles named by `NODE_EXTRA_CA_CERTS` / `SSL_CERT_FILE`, so servers and registries behind a corporate CA work.
 
 ---
 
 ## 9. Security considerations
 
-- Installing an MCP server means **running third-party code** with the user's privileges. Show the publisher, source repo, registry verification status, and the exact command before install. Pin versions (`pkg@1.2.3`) by default, with "latest" opt-in.
-- Electron hardening: `contextIsolation: true`, `sandbox: true`, `nodeIntegration: false`, a strict CSP, no remote content in privileged windows, and README markdown sanitized (`DOMPurify`) with external links opened in the browser.
-- IPC: narrow, typed, zod-validated. The renderer never sends arbitrary file paths or shell commands to main.
-- Spawning: use `execFile`/`spawn` with arg arrays, never shell strings.
-- Overlay and registry data are untrusted input. Validate them against the schema.
-- Signed builds and signed auto-updates.
+- Installing an MCP server means **running third-party code** with the user's privileges. Show the source repo, registry, and the exact command before install. Versions are pinned. Still to do: publisher and verification status (needs the overlay), "latest" opt-in.
+- Electron hardening: `contextIsolation: true`, `sandbox: true`, `nodeIntegration: false`, a strict CSP, external links opened in the browser. If READMEs are rendered later, sanitize them (`DOMPurify`).
+- IPC: narrow, typed, zod-validated. File paths from the window must be absolute and belong to a known config or backup. No shell commands from the renderer.
+- Spawning: `execFile`/`spawn` with arg arrays, never shell strings.
+- Registry and overlay data are untrusted input; validate against the schema.
+- Signed builds and signed auto-updates once there are certificates (§16).
 
 ---
 
@@ -236,89 +256,93 @@ Users' config files hold hand-tuned state. Breaking them destroys trust.
 
 ```
 kumi/
-├─ PLAN.md
-├─ package.json
-├─ electron.vite.config.ts
-├─ electron-builder.yml
+├─ PLAN.md · README.md · LICENSE (MIT)
+├─ package.json · electron.vite.config.ts · electron-builder.yml · vitest.config.mts
+├─ build/                       # icons (icon.svg → png/icns via `npm run icon`)
+├─ scripts/
+├─ .github/workflows/           # ci.yml, release.yml, docs.yml
 ├─ src/
 │  ├─ main/
-│  │  ├─ index.ts                 # app lifecycle, windows
-│  │  ├─ ipc/                     # handlers + zod schemas
-│  │  ├─ catalog/                 # registry client, overlay, cache
-│  │  ├─ clients/
-│  │  │  ├─ types.ts              # ClientAdapter, ServerSpec
-│  │  │  ├─ claude-desktop.ts
-│  │  │  ├─ claude-code.ts
-│  │  │  ├─ vscode.ts
-│  │  │  ├─ cursor.ts
-│  │  │  ├─ codex.ts
-│  │  │  ├─ copilot-cli.ts
-│  │  │  ├─ opencode.ts
-│  │  │  └─ pi.ts
-│  │  ├─ config-io/               # json.ts, jsonc.ts, toml.ts, atomic-write.ts
-│  │  ├─ install/                 # planner, diff, apply, rollback
+│  │  ├─ index.ts               # app lifecycle, windows
+│  │  ├─ ipc.ts                 # handlers + zod schemas
+│  │  ├─ host.ts                # login-shell PATH and config vars
+│  │  ├─ settings.ts · tls.ts · log.ts
+│  │  ├─ catalog/               # catalog, registry (API), file, http cache, sources
+│  │  ├─ clients/               # types, common, one file per app
+│  │  ├─ config-io/             # json, toml, fs (atomic write), diff
+│  │  ├─ install/               # service: plan, apply, uninstall
 │  │  ├─ secrets/
-│  │  ├─ runtime/                 # detect npx/uvx/docker
-│  │  ├─ health/                  # MCP handshake
-│  │  └─ state/                   # state.json, backups
+│  │  ├─ runtime/               # detect npx/uvx/docker
+│  │  ├─ health/                # check, oauth
+│  │  ├─ state/                 # store, backups
+│  │  └─ updater/               # github feed, version, install kind, installers, service
 │  ├─ preload/
-│  │  └─ index.ts
-│  ├─ renderer/
-│  │  ├─ routes/                  # Catalog, ServerDetail, Installed, Settings
-│  │  ├─ components/              # InstallWizard, DynamicForm, DiffView, ClientPicker
+│  ├─ renderer/src/
+│  │  ├─ pages/                 # Welcome, Discover, ServerDetail, Installed, Settings, About
+│  │  ├─ components/            # InstallWizard, FieldInput, CustomServerForm, RegistryDialog, Updates, ui
 │  │  └─ lib/
-│  └─ shared/                     # types shared across processes
-├─ packages/
-│  └─ kumi-run/                  # secure-launch shim (phase 3)
-└─ tests/
-   ├─ fixtures/<client>/*.json|jsonc|toml   # real-world config samples
-   ├─ unit/
-   └─ e2e/
+│  └─ shared/                   # api, types, registry schema, variants, featured
+├─ tests/
+│  ├─ fixtures/configs/ · fixtures/registry/
+│  └─ *.test.ts
+└─ docs/                        # VitePress site (own package): guide, reference, contributing
 ```
+
+`packages/kumi-run/` (secure-launch shim) arrives with Phase 3.
 
 ---
 
 ## 11. Roadmap
 
-> **Status (2026-10-29):** Phase 0 and the Phase 1 MVP are implemented, plus parts of Phase 2 (health check, Copilot CLI, mcp-remote bridging). Decisions made while building:
-> - The registry API is `https://registry.modelcontextprotocol.io/v0.1` (`/v0` timed out). Some lookups take ~15s, so the client uses a 25s timeout and a disk cache, and featured cards load one by one.
-> - JSON/JSONC edits use `jsonc-parser`. Comments and unrelated keys survive, but lines next to the edit may be reformatted. Byte-identical preservation holds for TOML (Codex), where Kumi owns whole sections. Every write is checked so that nothing outside the server entry changes.
-> - Edits are written directly to config files. Vendor CLIs (`claude mcp`, `code --add-mcp`, `codex mcp`) are not used yet.
-> - On launch, `PATH`, `CLAUDE_CONFIG_DIR`, `CODEX_HOME` and `XDG_CONFIG_HOME` are read from the user's login shell, because GUI launches don't inherit them.
+> **Status (2026-11-22):** v0.1.14. Phase 0 and the Phase 1 MVP are done, most of Phase 2, and the first Phase 3 apps (Junie, Air in JetBrains IDEs, Zed). Decisions made while building:
+> - Registry API is `/v0.1`, with a 25s timeout and a disk cache; featured cards load one by one.
+> - JSON/JSONC edits may reformat lines next to the edit; TOML stays byte-identical outside Kumi's sections. Every write is guarded.
+> - Edits are written directly to config files. Vendor CLIs are not used.
+> - On launch, `PATH`, `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `XDG_CONFIG_HOME` and `PI_CODING_AGENT_DIR` are read from the user's login shell, because GUI launches don't inherit them.
+> - No signing certificates, so macOS builds are ad-hoc signed and Windows builds unsigned; app updates are designed around that (§16).
+> - Node only trusts its bundled CAs, so Kumi adds the OS trust store at startup.
 
-### Phase 0: Foundations (≈1 week)
-- [x] Scaffold electron-vite + React + TS + Tailwind/shadcn. Set up ESLint/Prettier and Vitest.
+### Phase 0: Foundations
+- [x] Scaffold electron-vite + React + TS + Tailwind. Vitest.
+- [ ] ESLint/Prettier (or Biome).
 - [x] Electron security baseline (sandbox, CSP, typed IPC bridge).
-- [x] CI: GitHub Actions matrix (macOS, Windows, Linux) running lint, typecheck, and tests.
-- [x] `config-io`: format-preserving JSON, JSONC, and TOML edit with atomic write and backup, plus heavy tests.
+- [x] CI: GitHub Actions matrix (macOS, Windows, Linux) running typecheck, tests, and build.
+- [x] `config-io`: format-preserving JSON, JSONC, and TOML edit with atomic write and backup.
 
-### Phase 1: MVP (≈3–4 weeks)
+### Phase 1: MVP
 - [x] Canonical `ServerSpec` and `ClientAdapter` interface.
-- [x] Adapters: **Claude Desktop, Claude Code (user + project), VS Code (user + workspace), Cursor (user + project), Codex (user)**, each with detect, list, render, apply, remove, and fixture tests.
+- [x] Adapters: Claude Desktop, Claude Code (user + local + project), VS Code (user + workspace), Cursor (user + project), Codex (user), with fixture tests.
 - [x] Catalog: official registry client, local cache, search, and the detail page.
 - [x] Dynamic form from `environmentVariables`, `packageArguments`, and `headers`.
-- [x] Install wizard: clients → scope → configure → prereqs → diff → apply.
-- [x] Installed view: matrix, uninstall, edit, open config, restore backup.
+- [x] Install wizard: apps → scope → variant → configure → prereqs → diff → apply.
+- [x] Installed view: grouped list, uninstall, edit, open config, project folders, restore backup.
 - [x] StateStore and ownership tracking.
 - [x] Inline secrets mode, plus VS Code `inputs` mode.
-- [ ] Unsigned dev builds for all three OSes.
+- [x] Unsigned builds for all three OSes (release workflow).
 
-### Phase 2: Polish & trust (≈2–3 weeks)
-- [ ] Curated overlay repo (started: featured list and categories ship with the app in `src/shared/featured.ts`) (featured, categories, icons, overrides, verified).
-- [x] Health check / Test connection.
-- [ ] Import existing servers (done: hand-added servers are listed, and editing one adopts it), adopt them, and "copy to other clients".
-- [ ] Update detection (new registry version → update across clients).
-- [x] GitHub Copilot CLI adapter. Use CLIs (`claude mcp`, `code --add-mcp`, `codex mcp`) when present.
-- [x] Remote-server bridging for stdio-only clients (`mcp-remote`).
-- [x] Release pipeline (GitHub Releases + Homebrew cask).
+### Phase 2: Polish & trust
+- [x] Multiple registries: MCP Registry API and static JSON files, with headers and encrypted secrets, merged search, refresh.
+- [x] Custom servers (form).
+- [ ] Curated overlay repo (started: `src/shared/featured.ts`): icons, overrides, verified, compatibility notes, denylist.
+- [x] Health check / Test connection, including OAuth sign-in and SSE fallback.
+- [ ] Import existing servers (done: listed, editing adopts them). Still: explicit adopt and "copy to other apps".
+- [ ] Update detection (new registry version → update across apps).
+- [ ] Enable/disable an installed server.
+- [x] GitHub Copilot CLI, OpenCode and Pi adapters.
+- [ ] Use vendor CLIs (`claude mcp`, `code --add-mcp`, `codex mcp`) when present.
+- [x] Remote-server bridging for apps without a transport (`mcp-remote`).
+- [x] Release pipeline (GitHub Releases) and Homebrew cask (bumped by hand).
+- [x] Docs site (VitePress on GitHub Pages).
+- [x] Log file; OS certificate trust.
+- [ ] Warn when Claude Code is running; watch config files for external changes.
 - [ ] Code signing, notarization.
-- [ ] App updates: see [§16](#16-app-updates).
+- [ ] App updates: see [§16](#16-app-updates) (in-app on all platforms done; Homebrew tap bump left).
 
 ### Phase 3: Power features
 - [ ] `kumi-run` secure-launch shim with OS keychain.
-- [ ] More clients: Windsurf, Zed, Cline, Gemini CLI, JetBrains/Visual Studio Copilot, Continue.
+- [ ] Client-native secrets for Codex (`env_vars`, `bearer_token_env_var`) and `.mcp.json` (`${VAR}`).
+- [ ] More apps: done Junie, Air in JetBrains IDEs, Zed. Next: Windsurf, Cline, Gemini CLI, JetBrains/Visual Studio Copilot, Continue.
 - [ ] Profiles / bundles ("Web dev pack": install N servers at once) and export/import of a setup.
-- [ ] Custom/private registries (enterprise).
 - [ ] Deep links: `kumi://install?server=io.github.foo/bar`, so websites can show an "Install with Kumi" button.
 - [ ] Companion `kumi` CLI for headless and CI use.
 
@@ -326,12 +350,23 @@ kumi/
 
 ## 12. Testing strategy
 
-- **Adapter golden tests**: for each client, fixtures covering empty, minimal, with comments, with unrelated keys, with conflicting names, and malformed files. Assert on the exact output text so formatting is preserved.
-- **Round-trip property tests**: `parse(render(spec)) == spec` for every adapter.
-- **Install service**: plan, apply, and rollback on a temp home dir (`HOME` overridden), including the concurrent-modification case.
-- **Catalog**: contract tests against recorded registry responses, plus schema validation.
-- **E2E (Playwright + Electron)**: browse → install into a fake home → assert files written → uninstall → assert clean.
-- **Manual smoke matrix** per release: actually open each real client and confirm the server shows up and works.
+Current suites (`tests/`, Vitest, run in Node without Electron):
+
+| Suite | Covers |
+|---|---|
+| `adapters.test.ts` | Every adapter: round-trips, bridging, Windows wrapping, golden tests against fixture configs (compared byte for byte; `.gitattributes` keeps them LF). |
+| `config-io.test.ts` | Format-preserving JSON/JSONC/TOML edits, atomic writes. |
+| `install-service.test.ts` | Plan, apply, uninstall and backups on a temp home, including a file changing between plan and apply. |
+| `catalog.test.ts` | Registry clients against recorded responses, merged search, registry storage and headers. |
+| `variants.test.ts` | `server.json` → form fields → `ServerSpec`. |
+| `health-oauth.test.ts` | OAuth detection and sign-in flow. |
+| `updater.test.ts` | Version comparison, channels, install kind, downloads, macOS blockers, service state machine. |
+| `tls.test.ts`, `log.test.ts` | Certificate loading, log rotation. |
+
+Still to do:
+- **Round-trip property tests**: `readServers(upsert(spec)) == spec` for generated specs on every adapter.
+- **E2E (Playwright + Electron)**: browse → install into a fake home → assert files written → uninstall → assert byte-identical.
+- **Manual smoke matrix** per release: open each real app and confirm the server shows up and works.
 
 ---
 
@@ -339,25 +374,27 @@ kumi/
 
 | Risk | Mitigation |
 |---|---|
-| Client config formats change without notice | Adapters are isolated and versioned, prefer vendor CLIs, fixture tests, and a fast release cadence. Detect the client version and warn on unknown versions. |
-| Corrupting a user's config | Format-preserving edits, atomic writes, backups, diff preview, ownership tracking. |
-| `~/.claude.json` races with a running Claude Code | Use the `claude` CLI, retry on conflict, warn if the process is running. |
+| App config formats change without notice | Isolated adapters, fixture tests, fast release cadence. Later: vendor CLIs, version detection with a warning on unknown versions. |
+| Corrupting a user's config | Format-preserving edits, the guard, atomic writes, backups, diff preview, ownership tracking. |
+| `~/.claude.json` races with a running Claude Code | Minimal patch and the hash check. Still to do: warn if it's running, or use the `claude` CLI. |
 | Plaintext secrets | Secure modes (§6), clear disclosure. |
-| Malicious or low-quality servers in the registry | Verified badges, publisher info, pinned versions, a curated overlay with denylist support. |
-| Incomplete registry metadata (missing env vars) | Overlay overrides, plus a "custom field" escape hatch in the form. |
-| Windows path and quoting quirks (`npx` → `npx.cmd`, `cmd /c`) | Per-OS command rendering in adapters, plus Windows CI. |
+| Malicious or low-quality servers in the registry | Pinned versions, command shown before install. Later: verified badges, publisher info, overlay denylist. |
+| Incomplete registry metadata (missing env vars) | Custom servers today; overlay overrides later. |
+| Windows path and quoting quirks (`npx` → `npx.cmd`, `cmd /c`) | `windowsWrap` in adapters, Windows CI. |
+| Corporate networks (TLS interception, internal CAs) | OS trust store added at startup. |
+| No signing certificates | Ad-hoc / unsigned builds, custom macOS updater, quarantine instructions in docs. |
 
 ---
 
 ## 14. Open questions
 
-1. **Distribution**: GitHub Releases only, or also Homebrew cask, winget, and Snap/Flatpak?
-2. **Catalog scope**: official registry only, or also index other sources (Smithery, Glama, mcp.so) where their terms allow?
-3. **Default secrets mode**: inline (max compatibility) or client-native secure where available?
-4. **Claude Code scope default**: user, or ask every time?
-5. **Telemetry**: none, or opt-in anonymous install counts (useful for "popular" ranking)?
-6. **License** for Kumi itself (MIT / Apache-2.0)?
-7. **Branding / UI direction**: a stall/market metaphor, light and dark themes.
+Settled: distribution is GitHub Releases plus a Homebrew cask; the license is MIT; the default secrets mode is inline; the name is Kumi.
+
+1. **More distribution**: winget, Snap/Flatpak?
+2. **Catalog scope**: also index other sources (Smithery, Glama, mcp.so) where their terms allow, or leave that to user-added registries?
+3. **Claude Code scope default**: user, or ask every time?
+4. **Telemetry**: none, or opt-in anonymous install counts (useful for "popular" ranking)?
+5. **Overlay hosting**: separate repo, or a file in this one?
 
 ---
 
