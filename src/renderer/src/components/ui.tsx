@@ -1,4 +1,4 @@
-import { Loader2, X } from 'lucide-react';
+import { ChevronDown, Loader2, X } from 'lucide-react';
 import { useEffect, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes } from 'react';
 
 export function cx(...parts: (string | false | null | undefined)[]): string {
@@ -29,7 +29,7 @@ export function Button({
       type="button"
       disabled={disabled || loading}
       className={cx(
-        'inline-flex items-center justify-center gap-1.5 rounded-full font-medium transition disabled:cursor-not-allowed disabled:opacity-50',
+        'inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-full font-medium transition disabled:cursor-not-allowed disabled:opacity-50',
         size === 'sm' ? 'h-7 px-2.5 text-xs' : 'h-9 px-3.5 text-sm',
         VARIANTS[variant],
         className,
@@ -87,9 +87,15 @@ export function Input({ className, ...rest }: InputHTMLAttributes<HTMLInputEleme
 
 export function Select({ className, children, ...rest }: SelectHTMLAttributes<HTMLSelectElement>) {
   return (
-    <select className={cx('h-9 w-full rounded-lg border border-line bg-panel px-2.5 text-sm text-ink focus:border-accent focus:ring-3 focus:ring-accent/12 focus:outline-none', className)} {...rest}>
-      {children}
-    </select>
+    <div className={cx('relative w-full', className)}>
+      <select
+        className="h-9 w-full appearance-none rounded-lg border border-line bg-panel pr-9 pl-2.5 text-sm text-ink focus:border-accent focus:ring-3 focus:ring-accent/12 focus:outline-none"
+        {...rest}
+      >
+        {children}
+      </select>
+      <ChevronDown className="pointer-events-none absolute top-1/2 right-3 size-4 -translate-y-1/2 text-muted" />
+    </div>
   );
 }
 
