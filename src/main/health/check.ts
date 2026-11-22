@@ -8,15 +8,21 @@ import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
+import { hostOf, matchHost, type PrivateNetwork, type PrivateNetworkSettings } from '@shared/private-network';
 import type { HealthResult, HealthTestOptions, ServerSpec } from '@shared/types';
 import { log } from '../log';
+import { causeOf, codedError, describeCause, errorCode, isUnreachable, probe, resolveAddress, type NetworkCause } from './network';
 import { OAuthSession, type OpenBrowser } from './oauth';
 
 export interface TestOptions extends HealthTestOptions {
   openBrowser?: OpenBrowser;
+  /** The Private networks settings, to tell whether a remote server's host is on a private network. */
+  networks?: PrivateNetworkSettings;
 }
 
 const TIMEOUT_MS = 90_000; // first `npx`/`uvx`/`docker` run may download the package
+/** A remote server has nothing to download, so a slow answer usually means nothing is answering. */
+const REMOTE_TIMEOUT_MS = 15_000;
 const SIGN_IN_TIMEOUT_MS = 5 * 60_000;
 /** The result (and so the UI) gets the end of the server's stderr; the log keeps much more of it. */
 const STDERR_SHOWN = 4000;
@@ -125,7 +131,29 @@ function signInUnavailableReason(oauth: OAuthSession): string {
   return 'It only accepts apps registered with it in advance.';
 }
 
-export async function testServer(spec: ServerSpec, { signIn = false, openBrowser = openInBrowser }: TestOptions = {}): Promise<HealthResult> {
+/**
+ * Why a remote server failed when no HTTP answer came back: its name doesn't resolve, nothing answered, no route,
+ * a refused or dropped connection. Also the address the name resolves to, for matching address ranges.
+ */
+async function diagnose(spec: ServerSpec, e: unknown): Promise<{ cause?: NetworkCause; address?: string }> {
+  const url = new URL(spec.url!);
+  const cause = causeOf(errorCode(e));
+  // Without a system error (the SSE transport drops it, or Kumi's own timeout fired), look the host up and connect to it.
+  if (!cause) return probe(url).catch(() => ({}));
+  if (cause === 'timeout') return { cause, address: await resolveAddress(url.hostname) };
+  return { cause };
+}
+
+/** The registry's flag, or the host matched against the Private networks settings. */
+function privateNetworkOf(spec: ServerSpec, opts: TestOptions, address?: string): PrivateNetwork | undefined {
+  if (opts.privateNetwork) return { source: 'registry', ...(opts.privateNetwork.vpn ? { vpn: opts.privateNetwork.vpn } : {}) };
+  const host = spec.transport === 'stdio' ? undefined : hostOf(spec.url);
+  return host && opts.networks ? matchHost(host, opts.networks, address) : undefined;
+}
+
+export async function testServer(spec: ServerSpec, opts: TestOptions = {}): Promise<HealthResult> {
+  const { signIn = false, openBrowser = openInBrowser } = opts;
+  const timeoutMs = spec.transport === 'stdio' ? TIMEOUT_MS : REMOTE_TIMEOUT_MS;
   const started = Date.now();
   let fullStderr = '';
   const onStderr = (c: string) => (fullStderr = (fullStderr + c).slice(-STDERR_LOGGED));
@@ -141,9 +169,9 @@ export async function testServer(spec: ServerSpec, { signIn = false, openBrowser
   try {
     oauth = mayUseOAuth(spec) ? await OAuthSession.start(spec.url!, { openBrowser, interactive: signIn }) : undefined;
     let remote: StreamableHTTPClientTransport | SSEClientTransport | undefined;
-    const opts: ConnectOptions = { onStderr, authProvider: oauth?.provider, onRemote: (t) => (remote = t) };
+    const connectOpts: ConnectOptions = { onStderr, authProvider: oauth?.provider, onRemote: (t) => (remote = t) };
     try {
-      transport = await withTimeout(connect(spec, client, opts), TIMEOUT_MS);
+      transport = await withTimeout(connect(spec, client, connectOpts), timeoutMs);
     } catch (e) {
       if (!(e instanceof UnauthorizedError) || !oauth?.awaitingSignIn || !remote) throw e;
       // The server wants OAuth and Kumi could sign in. Without `signIn`, stop here: the server is up.
@@ -154,7 +182,7 @@ export async function testServer(spec: ServerSpec, { signIn = false, openBrowser
       await remote.close().catch(() => {});
       await client.close().catch(() => {});
       client = new Client({ name: 'kumi', version: '0.1.0' });
-      transport = await withTimeout(connect(spec, client, opts), TIMEOUT_MS);
+      transport = await withTimeout(connect(spec, client, connectOpts), timeoutMs);
     }
     const info = client.getServerVersion();
     const tools = await withTimeout(client.listTools(), 30_000).catch(() => ({ tools: [] }));
@@ -181,11 +209,36 @@ export async function testServer(spec: ServerSpec, { signIn = false, openBrowser
     // HTTP transport errors carry the status in `code`, and the message is often just the (empty) body.
     const status = (e as { code?: unknown } | null)?.code;
     if (typeof status === 'number' && status >= 400 && !message.includes(String(status))) message = `${message.replace(/:\s*$/, '')} (HTTP ${status})`;
+    let unreachable: HealthResult['unreachable'];
+    let address: string | undefined;
+    // No HTTP answer from a remote server: say why the connection failed instead of "fetch failed".
+    if (spec.transport !== 'stdio' && typeof status !== 'number' && !(e instanceof UnauthorizedError)) {
+      const host = hostOf(spec.url) ?? new URL(spec.url!).hostname;
+      const found = await diagnose(spec, e);
+      address = found.address;
+      const words = found.cause && describeCause(found.cause, host, codedError(e));
+      if (words) message = words;
+      if (isUnreachable(found.cause)) unreachable = { cause: found.cause, host };
+    }
+    const privateNetwork = privateNetworkOf(spec, opts, address);
     const error = hint(message, fullStderr);
     const durationMs = Date.now() - started;
     const stack = e instanceof Error && e.stack ? `\n${e.stack}` : '';
-    await log('error', 'test-connection', `"${spec.name}" failed after ${(durationMs / 1000).toFixed(1)}s: ${error}`, `${describeForLog(spec)}${stack}${fullStderr ? `\nstderr:\n${fullStderr}` : ''}`);
-    return { ok: false, tools: [], error, stderr: fullStderr.slice(-STDERR_SHOWN) || undefined, durationMs };
+    await log(
+      unreachable ? 'warn' : 'error',
+      'test-connection',
+      `"${spec.name}" failed after ${(durationMs / 1000).toFixed(1)}s: ${error}`,
+      `${describeForLog(spec)}${privateNetwork ? `\nprivate network: ${privateNetwork.source}${privateNetwork.pattern ? ` (${privateNetwork.pattern})` : ''}` : ''}${stack}${fullStderr ? `\nstderr:\n${fullStderr}` : ''}`,
+    );
+    return {
+      ok: false,
+      tools: [],
+      error,
+      stderr: fullStderr.slice(-STDERR_SHOWN) || undefined,
+      durationMs,
+      ...(unreachable ? { unreachable } : {}),
+      ...(privateNetwork ? { privateNetwork } : {}),
+    };
   } finally {
     oauth?.close();
     await client.close().catch(() => {});

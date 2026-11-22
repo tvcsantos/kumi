@@ -6,6 +6,7 @@ import { dirname, isAbsolute } from 'node:path';
 import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeTheme, shell } from 'electron';
 import { z } from 'zod';
 import { API_METHODS, channel, type IpcResult, type KumiApi } from '@shared/api';
+import { normalizePattern, patternError } from '@shared/private-network';
 import { CLIENT_IDS, type ClientInfo } from '@shared/types';
 import type { Catalog } from './catalog/catalog';
 import { ADAPTERS } from './clients';
@@ -35,7 +36,9 @@ const serverSpec = z.object({
   secretHeaders: z.array(z.string()).optional(),
   secretArgs: z.array(z.number().int().nonnegative()).optional(),
 }).refine((s) => (s.transport === 'stdio' ? !!s.command : !!s.url), 'stdio servers need a command; remote servers need a URL');
-const healthTestOptions = z.object({ signIn: z.boolean().optional() }).optional();
+/** The registry's `private` flag, as the renderer passes it along. */
+const privateFlag = z.object({ vpn: z.string().trim().max(100).optional() });
+const healthTestOptions = z.object({ signIn: z.boolean().optional(), privateNetwork: privateFlag.optional() }).optional();
 const registryId = z.string().min(1).max(100);
 const variantRef = z.union([
   z.object({ kind: z.literal('package'), index: z.number().int().nonnegative() }),
@@ -46,7 +49,7 @@ const installRequest = z.object({
   spec: serverSpec,
   targets: z.array(z.object({ clientId, scope })).min(1),
   secretsMode: z.enum(['inline', 'client-native']),
-  source: z.object({ registryId, registryName: z.string(), version: z.string(), variant: variantRef }).optional(),
+  source: z.object({ registryId, registryName: z.string(), version: z.string(), variant: variantRef, privateNetwork: privateFlag.optional() }).optional(),
   values: stringMap.optional(),
   secretValueKeys: z.array(z.string()).optional(),
   overwriteForeign: z.boolean().optional(),
@@ -58,6 +61,16 @@ const settingsPatch = z.object({
   setupDone: z.boolean().optional(),
   autoCheckUpdates: z.boolean().optional(),
   updateChannel: z.enum(['stable', 'prerelease']).optional(),
+  privateNetworks: z
+    .array(
+      z.object({
+        pattern: z.string().max(300).refine((p) => !patternError(p), { error: (i) => patternError(String(i.input)) }).transform(normalizePattern),
+        vpn: z.string().trim().max(100).optional().transform((v) => v || undefined),
+      }),
+    )
+    .max(200, 'At most 200 patterns')
+    .optional(),
+  privateNetworkBuiltIns: z.boolean().optional(),
 });
 const registryDraft = z.object({
   name: z.string().trim().min(1, 'Give the registry a name').max(60),
@@ -148,7 +161,10 @@ function createHandlers(s: Services): Handlers {
     backupsRestore: (id) => s.backups.restore(z.uuid().parse(id)),
     projectsAdd: (dir) => s.state.addProject(absPath.parse(dir)),
     projectsRemove: (dir) => s.state.removeProject(absPath.parse(dir)),
-    healthTest: (spec, opts) => testServer(serverSpec.parse(spec), healthTestOptions.parse(opts)),
+    healthTest: async (spec, opts) => {
+      const { privateNetworks, privateNetworkBuiltIns } = await s.settings.get();
+      return testServer(serverSpec.parse(spec), { ...healthTestOptions.parse(opts), networks: { privateNetworks, privateNetworkBuiltIns } });
+    },
     pickDirectory: () => pick(['openDirectory']),
     pickFile: () => pick(['openFile']),
     openConfig: async (path) => {

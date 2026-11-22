@@ -3,7 +3,7 @@
 import { promises as fs } from 'node:fs';
 import type { RegistryServer, RegistryServerResponse } from '@shared/registry';
 import type { GetOptions, HttpCache } from './http';
-import { isActive, type RegistrySource, type SourcePage } from './registry';
+import { isActive, withRegistryMeta, type RegistrySource, type SourcePage } from './registry';
 
 export const isUrl = (location: string) => /^https?:\/\//i.test(location);
 
@@ -32,7 +32,7 @@ function latestByName(entries: RegistryServerResponse[]): RegistryServer[] {
     const prev = byName.get(r.server.name);
     if (!prev || !isLatest(prev) || isLatest(r)) byName.set(r.server.name, r);
   }
-  return [...byName.values()].map((r) => r.server);
+  return [...byName.values()].map(withRegistryMeta);
 }
 
 export class FileRegistry implements RegistrySource {
@@ -75,7 +75,8 @@ export class FileRegistry implements RegistrySource {
 
   async get(name: string, version = 'latest'): Promise<RegistryServer> {
     const entries = (await this.entries()).filter((r) => r.server.name === name);
-    const match = version === 'latest' ? latestByName(entries)[0] : entries.find((r) => r.server.version === version)?.server;
+    const found = entries.find((r) => r.server.version === version);
+    const match = version === 'latest' ? latestByName(entries)[0] : found && withRegistryMeta(found);
     if (!match) throw new Error('Not found in the registry');
     return match;
   }

@@ -1,13 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { CheckCircle2, CircleDashed, FileCode, FileJson, FolderSearch, Globe, History, Lock, Monitor, Moon, Pencil, Plus, RefreshCw, Sun, Trash2 } from 'lucide-react';
+import { CheckCircle2, CircleDashed, FileCode, FileJson, FolderSearch, Globe, History, Lock, Monitor, Moon, Network, Pencil, Plus, RefreshCw, Sun, Trash2 } from 'lucide-react';
 import { useState } from 'react';
+import { BUILT_IN_PATTERNS, hostOf, matchHost, normalizePattern, patternError, SINGLE_LABEL_RULE } from '@shared/private-network';
 import type { RegistryInfo } from '@shared/registry';
 import type { Settings as SettingsData, ThemeSetting, UpdateChannel } from '@shared/api';
 import type { SecretsMode } from '@shared/types';
 import { ClientMark } from '../components/bits';
 import { RegistryDialog } from '../components/RegistryDialog';
 import { useCheckForUpdates } from '../components/Updates';
-import { Badge, Button, cx, PageHeader, Select, Spinner } from '../components/ui';
+import { Badge, Button, cx, Input, PageHeader, Select, Spinner } from '../components/ui';
 import { api, errorMessage } from '../lib/api';
 import { useRegistries } from '../lib/hooks';
 
@@ -120,6 +121,114 @@ function Registries() {
   );
 }
 
+/** What the "Check a URL" box says about what was typed. */
+function checkUrl(text: string, settings: SettingsData): string {
+  const host = hostOf(/^[a-z][a-z0-9+.-]*:\/\//i.test(text) ? text : `https://${text}`);
+  if (!host) return 'Not a valid URL or host name.';
+  const m = matchHost(host, settings);
+  if (!m) return `${host} doesn't match any pattern. Kumi treats it as a public host.`;
+  return `${host} matches ${m.pattern}${m.source === 'built-in' ? ' (built in)' : ''}${m.vpn ? `: connect to ${m.vpn}` : ''}.`;
+}
+
+function PrivateNetworks({ settings, save }: { settings?: SettingsData; save: (patch: Partial<SettingsData>) => void }) {
+  const patterns = settings?.privateNetworks ?? [];
+  const [pattern, setPattern] = useState('');
+  const [vpn, setVpn] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [check, setCheck] = useState('');
+
+  const add = () => {
+    const problem = patternError(pattern);
+    if (problem) return setError(problem);
+    const p = normalizePattern(pattern);
+    if (patterns.some((x) => x.pattern === p)) return setError(`${p} is already in the list.`);
+    save({ privateNetworks: [...patterns, { pattern: p, ...(vpn.trim() ? { vpn: vpn.trim() } : {}) }] });
+    setPattern('');
+    setVpn('');
+    setError(null);
+  };
+
+  return (
+    <Section
+      title="Private networks"
+      description="Hosts that are only reachable on a VPN or office network. Kumi marks servers on them, and says so when a test can't reach one."
+    >
+      <label className="flex items-start gap-2 text-sm">
+        <input
+          type="checkbox"
+          className="mt-0.5 size-4 accent-accent"
+          checked={settings?.privateNetworkBuiltIns ?? true}
+          onChange={(e) => save({ privateNetworkBuiltIns: e.target.checked })}
+        />
+        <span>
+          Include names and ranges that can only be private
+          <span className="mt-1 flex flex-wrap gap-1">
+            {[SINGLE_LABEL_RULE, ...BUILT_IN_PATTERNS].map((p) => (
+              <code key={p} className="rounded bg-sunken px-1.5 py-0.5 font-mono text-[11px] text-muted">
+                {p}
+              </code>
+            ))}
+          </span>
+        </span>
+      </label>
+
+      {patterns.length > 0 && (
+        <ul className="mt-4 divide-y divide-line">
+          {patterns.map((p) => (
+            <li key={p.pattern} className="flex items-center gap-3 py-2">
+              <Network className="size-4 shrink-0 text-muted" />
+              <span className="min-w-0 flex-1 truncate font-mono text-sm">{p.pattern}</span>
+              <span className="min-w-0 truncate text-xs text-muted">{p.vpn ?? 'no VPN name'}</span>
+              <Button
+                size="sm"
+                variant="ghost"
+                icon={<Trash2 className="size-3.5" />}
+                onClick={() => save({ privateNetworks: patterns.filter((x) => x.pattern !== p.pattern) })}
+              >
+                Remove
+              </Button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <form
+        className="mt-4 flex flex-wrap items-start gap-2"
+        onSubmit={(e) => {
+          e.preventDefault();
+          add();
+        }}
+      >
+        <Input
+          value={pattern}
+          onChange={(e) => {
+            setPattern(e.target.value);
+            setError(null);
+          }}
+          placeholder="*.acme.com or 10.42.0.0/16"
+          className="max-w-72 font-mono"
+          aria-label="Host pattern"
+        />
+        <Input value={vpn} onChange={(e) => setVpn(e.target.value)} placeholder="VPN name (optional)" className="max-w-56" aria-label="VPN name" maxLength={100} />
+        <Button type="submit" icon={<Plus className="size-4" />} disabled={!pattern.trim()}>
+          Add
+        </Button>
+      </form>
+      {error && <p className="mt-2 text-xs text-danger">{error}</p>}
+      <p className="mt-2 text-xs text-muted">
+        A pattern is a host (<code className="font-mono">mcp.acme.com</code>), every host under a domain (<code className="font-mono">*.acme.com</code>), or an IP
+        address or range (<code className="font-mono">10.42.0.0/16</code>). The VPN name is used in messages: "connect to Acme GlobalProtect".
+      </p>
+
+      <label className="mt-4 block space-y-1">
+        <span className="block text-[13px] font-medium">Check a URL</span>
+        <Input value={check} onChange={(e) => setCheck(e.target.value)} placeholder="https://mcp.acme.com/mcp" className="max-w-md font-mono" />
+      </label>
+      {check.trim() && settings && <p className="mt-1.5 text-xs text-muted">{checkUrl(check.trim(), settings)}</p>}
+    </Section>
+  );
+}
+
 const THEMES: { value: ThemeSetting; label: string; icon: React.ReactNode }[] = [
   { value: 'system', label: 'System', icon: <Monitor className="size-4" /> },
   { value: 'light', label: 'Light', icon: <Sun className="size-4" /> },
@@ -182,6 +291,8 @@ export function Settings() {
       </Section>
 
       <Registries />
+
+      <PrivateNetworks settings={settings.data} save={(patch) => save.mutate(patch)} />
 
       <Section title="Secrets" description="Default for new installs. You can change it per install.">
         <Select

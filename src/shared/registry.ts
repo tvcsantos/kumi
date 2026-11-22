@@ -59,6 +59,13 @@ export interface RegistryServer {
   icons?: { src: string; mimeType?: string; theme?: 'light' | 'dark' }[];
   packages?: RegistryPackage[];
   remotes?: RegistryRemote[];
+  /** The publisher's extension data. The official registry keeps only `io.modelcontextprotocol.registry/publisher-provided`. */
+  _meta?: Record<string, unknown>;
+  /**
+   * Not part of `server.json`: the `_meta` the registry sent next to this server (its own data about the entry, such
+   * as `io.modelcontextprotocol.registry/official`). Kumi keeps it here so it travels with the server.
+   */
+  registryMeta?: Record<string, unknown>;
 }
 
 export interface RegistryServerResponse {

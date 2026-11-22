@@ -6,7 +6,7 @@
 
 For a **local** server, Kumi starts the command with the settings you entered, the same way your apps will, runs the MCP `initialize` handshake, asks for the list of tools, and stops the server.
 
-For a **remote** server, Kumi connects to the URL with your headers over Streamable HTTP. If the server answers `404` or `405`, it retries with the older SSE transport.
+For a **remote** server, Kumi connects to the URL with your headers over Streamable HTTP. If the server answers `404` or `405`, it retries with the older SSE transport. If nothing answers, Kumi says why: the name doesn't resolve, the host didn't answer, there's no route to it, or it refused the connection.
 
 The result shows:
 
@@ -41,9 +41,27 @@ If you set an `Authorization` header, Kumi sends only that header and skips OAut
 
 Servers that answer with something other than `401` (GitHub's hosted server, for example) don't offer OAuth sign-in to Kumi, and still need a token in the `Authorization` header.
 
+## Servers on a private network
+
+Some servers only answer on a company VPN or office network. Your apps connect to them, not Kumi, so installing one works anywhere. But testing it while you're not connected can't work.
+
+When Kumi can't reach a remote server at all (its name doesn't resolve, it doesn't answer, or there's no route to it), the result says **Not reachable from this network** instead of a failure, with what happened and what to do:
+
+- If Kumi knows the server is on a private network, it says so, and names the network to connect to when it knows it: *mcp.acme.internal is on a private network (matches \*.internal): connect to your VPN and test again.*
+- Otherwise it suggests it: *If this server is on a VPN or private network, connect and test again.*
+
+Kumi knows a server is on a private network when:
+
+- **its registry says so**. Registries can flag a server as private and name the VPN. See [Kumi's extension](../reference/registry-format#kumi-s-extension-private-network);
+- **its host matches a pattern** in [Settings → Private networks](./settings#private-networks): your own patterns, like `*.acme.com`, or the built-in ones, like `*.internal` or `10.0.0.0/8`.
+
+Such servers also show a **private network** badge on Discover, the server page and Installed, and a note in the install wizard.
+
+For a **local** server, the connection to the private service happens inside the server, so Kumi can't see why it failed. If the registry flags the server as private, the failure adds: *This server only works on Acme GlobalProtect. If you're not connected, that may be why.* The same note is added to other failures of a private remote server, for example when a company gateway answers `403` because you're not on the network.
+
 ## Timeouts
 
-The first run of an `npx`, `uvx` or `docker` server may download the package or image, so Kumi waits up to 90 seconds for the handshake, then up to 30 seconds for the tool list.
+The first run of an `npx`, `uvx` or `docker` server may download the package or image, so Kumi waits up to 90 seconds for its handshake. A remote server has nothing to download, so Kumi waits up to 15 seconds. Then it waits up to 30 seconds for the tool list.
 
 ## Common errors
 
@@ -55,5 +73,9 @@ The first run of an `npx`, `uvx` or `docker` server may download the package or 
 | *Sign-in timed out after 5 minutes* | After **Sign in to list tools**: the browser sign-in wasn't finished. Click the button again to restart it. If it adds *this server may not accept Kumi's sign-in*, look for an error on the sign-in page: the server may have rejected Kumi's metadata document. |
 | *The credentials don't have access.* | The server answered `403 Forbidden`. |
 | *Timed out after 90s* | The server didn't finish the handshake. Look at its stderr output for clues. |
+| *Couldn't find … : the name doesn't resolve* | The host name doesn't exist, or only resolves on a private network. Check the URL, or connect to your VPN. |
+| *… didn't answer* | Nothing answered within the time limit. The host may only be reachable on a private network, or a firewall drops the connection. |
+| *There's no network route to …* | Your computer has no way to reach that address, which usually means it's on a network you're not connected to. |
+| *… refused the connection* | The host answered, but nothing is listening on that port. Check the URL and port. |
 
 A test only proves the server can start on your machine. Each app still starts the server itself, with its own environment. See [Troubleshooting](./troubleshooting) if a server works in Kumi but not in an app.

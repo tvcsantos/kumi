@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, Check, CheckCircle2, FileText, FolderOpen, LogIn, PlugZap, RotateCcw, XCircle } from 'lucide-react';
+import { AlertTriangle, Check, CheckCircle2, FileText, FolderOpen, LogIn, Network, PlugZap, RotateCcw, WifiOff, XCircle } from 'lucide-react';
 import { useMemo, useState } from 'react';
+import { privateNetworkFor, registryPrivateNetwork, type PrivateNetwork } from '@shared/private-network';
 import type { RegistryServer } from '@shared/registry';
 import type {
   ApplyResult,
@@ -16,7 +17,8 @@ import type {
 } from '@shared/types';
 import { defaultVariant, getVariants, initialValues, resolveVariant, suggestName, validateValues, type FormValues } from '@shared/variants';
 import { api, errorMessage } from '../lib/api';
-import { ClientMark, DiffView, displayName, scopeLabel, ServerIcon } from './bits';
+import { useSettings } from '../lib/hooks';
+import { ClientMark, DiffView, displayName, privateNetworkDetail, scopeLabel, ServerIcon } from './bits';
 import { CustomServerForm, customFormFromSpec, specFromCustomForm, type CustomForm } from './CustomServerForm';
 import { FieldInput } from './FieldInput';
 import { Badge, Button, Callout, Input, Modal, Spinner, cx } from './ui';
@@ -126,12 +128,37 @@ function SignInPanel({ result, spec, onResult }: { result: HealthResult; spec: S
   );
 }
 
+/** Ends a message with a full stop unless it already ends with punctuation. */
+const sentence = (s: string | undefined) => (s && !/[.!?…]$/.test(s) ? `${s}.` : (s ?? ''));
+
+/** What to do about a server Kumi couldn't reach, depending on whether it's known to be on a private network. */
+function unreachableAdvice(host: string, network: PrivateNetwork | undefined): string {
+  if (!network) return "If this server is on a VPN or private network, connect and test again. Your apps can use it once you're connected.";
+  return `${host} is on a private network${privateNetworkDetail(network)}: connect to ${network.vpn ?? 'your VPN'} and test again. Your apps can use it once you're connected.`;
+}
+
 export function HealthPanel({ result, spec, onResult }: { result: HealthResult; spec?: ServerSpec; onResult: (r: HealthResult) => void }) {
+  if (!result.ok && result.unreachable) {
+    return (
+      <Callout tone="warn" icon={<WifiOff className="size-4" />}>
+        <div className="font-medium">Not reachable from this network</div>
+        <div className="break-words">{sentence(result.error)}</div>
+        <div className="mt-1">{unreachableAdvice(result.unreachable.host, result.privateNetwork)}</div>
+        <ShowLog />
+      </Callout>
+    );
+  }
   if (!result.ok) {
     return (
       <Callout tone="danger" icon={<XCircle className="size-4" />}>
         <div className="font-medium">Connection failed</div>
         <div className="break-words">{result.error}</div>
+        {result.privateNetwork && (
+          <div className="mt-1">
+            This server only works on {result.privateNetwork.vpn ?? 'a private network'}
+            {privateNetworkDetail(result.privateNetwork)}. If you're not connected, that may be why.
+          </div>
+        )}
         {result.stderr && <pre className="mt-2 max-h-32 overflow-auto font-mono text-[11px] whitespace-pre-wrap opacity-80">{result.stderr}</pre>}
         <ShowLog />
       </Callout>
@@ -170,7 +197,7 @@ export function InstallWizard({ source, onClose, onViewInstalled }: { source: Wi
   const queryClient = useQueryClient();
   const clients = useQuery({ queryKey: ['clients'], queryFn: api.clientsList });
   const runtimes = useQuery({ queryKey: ['runtimes'], queryFn: api.runtimesCheck });
-  const settings = useQuery({ queryKey: ['settings'], queryFn: api.settingsGet });
+  const settings = useSettings();
 
   const [step, setStep] = useState<Step>('configure');
   const isEdit = !!source.edit;
@@ -216,6 +243,8 @@ export function InstallWizard({ source, onClose, onViewInstalled }: { source: Wi
   const spec = resolved.spec;
   const hasSecrets = !!(spec?.secretEnv?.length || spec?.secretHeaders?.length);
   const runtime = variant?.runtime ? runtimes.data?.find((r) => r.name === variant.runtime) : undefined;
+  const registryFlag = server ? registryPrivateNetwork(server) : undefined;
+  const privateNetwork = privateNetworkFor(registryFlag, [spec?.url], settings.data);
 
   const clientOrder = (id: string) => clients.data?.findIndex((c) => c.id === id) ?? 0;
   const selectedTargets: InstallTarget[] = Object.entries(targets)
@@ -224,7 +253,7 @@ export function InstallWizard({ source, onClose, onViewInstalled }: { source: Wi
     .map(([clientId, t]) => ({ clientId: clientId as ClientId, scope: { kind: t!.scope, ...(t!.scope !== 'user' ? { projectDir: t!.projectDir } : {}) } }));
   const targetsMissingDir = selectedTargets.some((t) => t.scope.kind !== 'user' && !t.scope.projectDir);
 
-  const test = useMutation({ mutationFn: (s: ServerSpec) => api.healthTest(s), onSuccess: setHealth, onError: (e) => setHealth({ ok: false, tools: [], error: errorMessage(e), durationMs: 0 }) });
+  const test = useMutation({ mutationFn: (s: ServerSpec) => api.healthTest(s, { privateNetwork: registryFlag }), onSuccess: setHealth, onError: (e) => setHealth({ ok: false, tools: [], error: errorMessage(e), durationMs: 0 }) });
 
   const buildRequest = (overwriteForeign: boolean): InstallRequest => {
     const secretKeys = variant?.fields.filter((f) => f.secret).map((f) => f.id) ?? [];
@@ -235,7 +264,13 @@ export function InstallWizard({ source, onClose, onViewInstalled }: { source: Wi
       overwriteForeign: overwriteForeign || undefined,
       ...(source.kind === 'registry' && variant
         ? {
-            source: { registryId: source.registryId, registryName: source.server.name, version: source.server.version, variant: variant.ref },
+            source: {
+              registryId: source.registryId,
+              registryName: source.server.name,
+              version: source.server.version,
+              variant: variant.ref,
+              ...(registryFlag ? { privateNetwork: registryFlag } : {}),
+            },
             values,
             secretValueKeys: secretKeys,
           }
@@ -428,6 +463,12 @@ export function InstallWizard({ source, onClose, onViewInstalled }: { source: Wi
           {showErrors && resolved.error && Object.keys(fieldErrors).length === 0 && (
             <Callout tone="danger" icon={<XCircle className="size-4" />}>
               {resolved.error}
+            </Callout>
+          )}
+          {privateNetwork && (
+            <Callout tone="accent" icon={<Network className="size-4" />}>
+              Only reachable on {privateNetwork.vpn ?? 'a private network'}
+              {privateNetworkDetail(privateNetwork)}. Testing fails unless you're connected; your apps can use it once you are.
             </Callout>
           )}
           {spec && (

@@ -23,7 +23,12 @@ export function isActive(r: RegistryServerResponse): boolean {
   return !meta?.status || meta.status === 'active';
 }
 
-type ListResponse = { servers: RegistryServerResponse[]; metadata?: { nextCursor?: string } };
+/** The server, with the registry's own `_meta` for it kept in `registryMeta`. */
+export function withRegistryMeta(r: RegistryServerResponse): RegistryServer {
+  return r._meta && Object.keys(r._meta).length ? { ...r.server, registryMeta: r._meta } : r.server;
+}
+
+type ListResponse ={ servers: RegistryServerResponse[]; metadata?: { nextCursor?: string } };
 
 export class ApiRegistry implements RegistrySource {
   private readonly baseUrl: string;
@@ -46,14 +51,14 @@ export class ApiRegistry implements RegistrySource {
     if (cursor) params.set('cursor', cursor);
     const page = await this.getJson<ListResponse>(`/servers?${params}`);
     return {
-      servers: page.servers.filter(isActive).map((s) => s.server),
+      servers: page.servers.filter(isActive).map(withRegistryMeta),
       nextCursor: page.metadata?.nextCursor || undefined,
     };
   }
 
   async get(name: string, version = 'latest'): Promise<RegistryServer> {
     const res = await this.getJson<RegistryServerResponse>(`/servers/${encodeURIComponent(name)}/versions/${encodeURIComponent(version)}`);
-    return res.server;
+    return withRegistryMeta(res);
   }
 
   /**

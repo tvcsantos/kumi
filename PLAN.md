@@ -239,6 +239,16 @@ Users' config files hold hand-tuned state. Breaking them destroys trust.
 - Failures are written to `~/.kumi/logs/kumi.log` (rotated at 2 MB to `kumi.old.log`).
 - TLS trusts the OS certificate store (macOS Keychain, Windows store, Linux system bundles) and the bundles named by `NODE_EXTRA_CA_CERTS` / `SSL_CERT_FILE`, so servers and registries behind a corporate CA work.
 
+### Private networks (VPN-only servers)
+
+Apps connect to servers, not Kumi, so a server that only answers on a VPN installs fine. Kumi's job is to say "not reachable from here" instead of "broken", and to warn before the user relies on it.
+
+1. **Failure causes.** A remote test failure is sorted by its system error: `dns` (`ENOTFOUND`, `EAI_AGAIN`), `timeout`, `route` (`EHOSTUNREACH`, `ENETUNREACH`), `refused`, `tls`. `dns`, `timeout` and `route` show in amber as *not reachable from this network*, with a VPN hint; the others stay red, with the real reason instead of `fetch failed`. Remote tests time out after 15s (no download to wait for). `HealthResult.unreachable` carries the cause, host and, when known, why the host is private.
+2. **Settings → Private networks.** Host patterns (`*.acme.com`, `mcp`) and IP ranges (`10.42.0.0/16`), each with an optional VPN label. Built-in patterns are only the certain ones (single-label names, `*.internal`, `*.local`, `*.home.arpa`, RFC 1918, `100.64.0.0/10`, `fc00::/7`) and can be switched off. IP ranges match an IP in the URL, or the address the name resolves to after a timeout.
+3. **Registry flag.** `pt.com.santos.tiago/kumi: { "private": true, "vpn"?: "…" }` means the server only works on a private network, however it runs (remote, or a package that calls an internal API). Read from the server's `_meta["io.modelcontextprotocol.registry/publisher-provided"]` (the publisher's; the only place the official registry keeps; it refuses other `_meta` keys with a 422) and from the response-level `_meta` (the registry operator's; static files and other registry software). Either marks it private; the operator's `vpn` label wins. A server mixing public and private forms is published as two servers.
+
+A server is private when its registry flags it or a remote's host matches a pattern. That shows as a badge on Discover, the detail page and Installed, a note in the install wizard, and a specific hint when a test fails (for packages, where Kumi can't see the cause, a "may be why" hint). Not covered: system proxies and PAC files, and packages from private package registries.
+
 ---
 
 ## 9. Security considerations
@@ -335,6 +345,7 @@ kumi/
 - [x] Release pipeline (GitHub Releases) and Homebrew cask (bumped by hand).
 - [x] Docs site (VitePress on GitHub Pages).
 - [x] Log file; OS certificate trust.
+- [ ] Private networks (§8): failure causes, Settings patterns, registry `private` flag.
 - [ ] Warn when Claude Code is running; watch config files for external changes.
 - [ ] Code signing, notarization.
 - [ ] App updates: see [§16](#16-app-updates) (in-app on all platforms done; Homebrew tap bump left).

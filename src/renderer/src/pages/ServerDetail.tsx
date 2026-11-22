@@ -1,11 +1,12 @@
 import { useQuery } from '@tanstack/react-query';
 import { ArrowLeft, Code2, Download, ExternalLink, KeyRound, Library, Lock } from 'lucide-react';
+import { privateNetworkFor, registryPrivateNetwork } from '@shared/private-network';
 import type { CatalogItem, RegistryServer } from '@shared/registry';
 import { getVariants } from '@shared/variants';
-import { ClientMark, displayName, scopeLabel, ServerIcon } from '../components/bits';
+import { ClientMark, displayName, PrivateNetworkBadge, scopeLabel, ServerIcon } from '../components/bits';
 import { Badge, Button, Callout, Spinner } from '../components/ui';
 import { api, errorMessage } from '../lib/api';
-import { useInstalledByServer, useRegistry } from '../lib/hooks';
+import { useInstalledByServer, useRegistry, useSettings } from '../lib/hooks';
 
 export function ServerDetail({ initial, onBack, onInstall }: { initial: CatalogItem; onBack: () => void; onInstall: (server: RegistryServer) => void }) {
   const { registryId } = initial;
@@ -15,6 +16,10 @@ export function ServerDetail({ initial, onBack, onInstall }: { initial: CatalogI
   const variants = getVariants(server);
   const installed = useInstalledByServer(registryId, server.name);
   const installable = variants.some((v) => !v.unsupported);
+  const settings = useSettings();
+  // The registry's flag covers the whole server, so it goes in the header; a pattern only covers the remote it matches.
+  const flag = registryPrivateNetwork(server);
+  const privateNetwork = privateNetworkFor(flag, [], settings.data);
 
   return (
     <div className="space-y-6">
@@ -32,6 +37,11 @@ export function ServerDetail({ initial, onBack, onInstall }: { initial: CatalogI
           {registry && (
             <div className="mt-1 flex items-center gap-1 text-xs text-muted">
               <Library className="size-3.5" /> From {registry.name}
+            </div>
+          )}
+          {privateNetwork && (
+            <div className="mt-2">
+              <PrivateNetworkBadge network={privateNetwork} />
             </div>
           )}
           <div className="mt-3 flex flex-wrap gap-2">
@@ -80,6 +90,7 @@ export function ServerDetail({ initial, onBack, onInstall }: { initial: CatalogI
                 <Badge>{v.ref.kind === 'remote' ? 'hosted' : 'runs locally'}</Badge>
                 <Badge>{v.transport}</Badge>
                 {v.runtime && <Badge>needs {v.runtime}</Badge>}
+                {v.ref.kind === 'remote' && !flag && <PrivateNetworkBadge network={privateNetworkFor(undefined, [server.remotes?.[v.ref.index]?.url], settings.data)} />}
                 {v.unsupported && <Badge tone="warn">not supported</Badge>}
               </div>
               {v.unsupported ? (

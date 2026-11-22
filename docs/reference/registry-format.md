@@ -118,6 +118,64 @@ Arguments also have:
 
 Packages with another `registryType` (for example `mcpb`), or whose `transport` isn't `stdio`, are listed but can't be installed yet.
 
+## Kumi's extension: private network
+
+A registry can tell Kumi that a server only works on a private network, such as a company VPN. Kumi then marks it on Discover, the server page and Installed, warns in the install wizard, and names the network when a test fails. See [Servers on a private network](../guide/test-connection#servers-on-a-private-network).
+
+The flag lives under Kumi's key, `pt.com.santos.tiago/kumi`:
+
+```json
+{ "private": true, "vpn": "Acme GlobalProtect" }
+```
+
+| Field | Effect |
+|---|---|
+| `private` | `true`: the server only works on a private network, whether it runs locally or is hosted. Anything else is ignored. |
+| `vpn` | Optional. What to connect to, as people know it. Used in messages ("connect to Acme GlobalProtect"); without it, Kumi says "your VPN". |
+
+It covers the whole server: the hosted URLs, and the packages, which usually call an internal service too. If one way to run a server is public and another private, list them as two servers.
+
+### Where to put it
+
+There are two places, depending on who writes it.
+
+**In `server.json`**, written by the server's publisher. Put it inside `io.modelcontextprotocol.registry/publisher-provided`:
+
+```json
+{
+  "name": "com.acme/tickets",
+  "description": "Search and update Acme tickets.",
+  "version": "1.2.0",
+  "remotes": [{ "type": "streamable-http", "url": "https://mcp.acme.internal/tickets" }],
+  "_meta": {
+    "io.modelcontextprotocol.registry/publisher-provided": {
+      "pt.com.santos.tiago/kumi": { "private": true, "vpn": "Acme GlobalProtect" }
+    }
+  }
+}
+```
+
+This works in every kind of registry. It's the only place that works in one running the official registry software (the public registry, or a copy you host): it keeps only `publisher-provided` in a server's `_meta`, and refuses to publish a server with any other key there.
+
+**Next to `server`**, written by whoever runs the registry, in the [list response shape](#file-shape):
+
+```json
+{
+  "servers": [
+    {
+      "server": { "name": "com.acme/tickets", "description": "Search and update Acme tickets.", "version": "1.2.0" },
+      "_meta": {
+        "pt.com.santos.tiago/kumi": { "private": true, "vpn": "Acme VPN (EU gateway)" }
+      }
+    }
+  ]
+}
+```
+
+Use this one in a static file, to say a server is private in your setup without changing its `server.json`. Registries running the official software fill this `_meta` themselves, so it can't be set there.
+
+If both places have the flag, the server is private, and the `vpn` from next to `server` wins.
+
 ## Example: a minimal private catalog
 
 ```json

@@ -2,12 +2,13 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, ChevronDown, ChevronRight, FileCode, FolderPlus, Layers, Pencil, PlugZap, Plus, RefreshCw, Trash2, X } from 'lucide-react';
 import { useState } from 'react';
 import type { HealthResult, InstalledEntry, InstallTarget, ServerSpec } from '@shared/types';
-import { ClientMark, scopeLabel } from '../components/bits';
+import { privateNetworkFor } from '@shared/private-network';
+import { ClientMark, PrivateNetworkBadge, scopeLabel } from '../components/bits';
 import { HealthPanel, testingLabel, type WizardSource } from '../components/InstallWizard';
 import { Badge, Button, Callout, Empty, PageHeader, Spinner } from '../components/ui';
 import { api, errorMessage } from '../lib/api';
 import { OFFICIAL_REGISTRY_ID } from '@shared/registry';
-import { useInstalled, useRegistries } from '../lib/hooks';
+import { useInstalled, useRegistries, useSettings } from '../lib/hooks';
 
 interface Group {
   name: string;
@@ -40,13 +41,15 @@ function GroupRow({ group, onEdit }: { group: Group; onEdit: (source: WizardSour
   const source = managed.find((e) => e.record?.source)?.record?.source;
   const registries = useRegistries();
   const fromRegistry = source && source.registryId !== OFFICIAL_REGISTRY_ID ? registries.data?.find((r) => r.id === source.registryId) : undefined;
+  const settings = useSettings();
+  const privateNetwork = privateNetworkFor(source?.privateNetwork, group.entries.map((e) => e.spec.url), settings.data);
 
   const refresh = () => {
     void queryClient.invalidateQueries({ queryKey: ['installed'] });
     void queryClient.invalidateQueries({ queryKey: ['backups'] });
   };
 
-  const test = useMutation({ mutationFn: () => api.healthTest(rep.spec), onSuccess: setHealth, onError: (e) => setError(errorMessage(e)) });
+  const test = useMutation({ mutationFn: () => api.healthTest(rep.spec, { privateNetwork: source?.privateNetwork }), onSuccess: setHealth, onError: (e) => setError(errorMessage(e)) });
 
   const uninstall = useMutation({
     mutationFn: async (entries: InstalledEntry[]) => {
@@ -90,6 +93,7 @@ function GroupRow({ group, onEdit }: { group: Group; onEdit: (source: WizardSour
             <div className="flex items-center gap-2">
               <span className="font-mono font-semibold">{group.name}</span>
               {managed.length === 0 ? <Badge>added manually</Badge> : managed.length < group.entries.length ? <Badge tone="warn">partly managed</Badge> : null}
+              <PrivateNetworkBadge network={privateNetwork} />
             </div>
             <div className="truncate font-mono text-[11px] text-muted">
               {source?.registryName ?? describeSpec(rep.spec)}

@@ -1,11 +1,12 @@
-import { Package } from 'lucide-react';
+import { Network, Package } from 'lucide-react';
 import { useState } from 'react';
+import type { PrivateNetwork } from '@shared/private-network';
 import type { RegistryServer } from '@shared/registry';
 import type { ClientId, DiffLine, ScopeRef } from '@shared/types';
 import iconDark from '../../../../build/icon-dark.svg';
 import iconLight from '../../../../build/icon-light.svg';
 import { useDarkMode } from '../lib/hooks';
-import { cx } from './ui';
+import { Badge, cx } from './ui';
 
 const CLIENT_STYLE: Record<ClientId, { short: string; color: string }> = {
   'claude-desktop': { short: 'CD', color: '#d97757' },
@@ -101,4 +102,25 @@ export function DiffView({ lines }: { lines: DiffLine[] }) {
 
 export function displayName(server: Pick<RegistryServer, 'name' | 'title'>): string {
   return server.title ?? server.name.split('/').pop() ?? server.name;
+}
+
+/** " (matches *.acme.com)" when a pattern decided it; nothing when the registry said so. */
+export function privateNetworkDetail(p: PrivateNetwork): string {
+  return p.pattern ? ` (matches ${p.pattern})` : '';
+}
+
+/** "Only reachable on Acme GlobalProtect", with how Kumi knows. */
+export function privateNetworkTitle(p: PrivateNetwork): string {
+  const where = p.vpn ?? 'a private network';
+  if (p.source === 'registry') return `Only reachable on ${where}, according to its registry.`;
+  return `Only reachable on ${where}${privateNetworkDetail(p)}.`;
+}
+
+export function PrivateNetworkBadge({ network }: { network: PrivateNetwork | undefined }) {
+  if (!network) return null;
+  return (
+    <Badge tone="accent" title={privateNetworkTitle(network)}>
+      <Network className="size-3" /> private network
+    </Badge>
+  );
 }

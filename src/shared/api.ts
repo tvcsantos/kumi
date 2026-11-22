@@ -1,5 +1,6 @@
 // The renderer ↔ main contract. The preload script exposes exactly this as `window.kumi`.
 
+import type { PrivateNetworkPattern } from './private-network';
 import type { CatalogPage, RegistryDraft, RegistryInfo, RegistryPatch, RegistryServer } from './registry';
 import type {
   ApplyResult,
@@ -29,6 +30,10 @@ export interface Settings {
   autoCheckUpdates: boolean;
   /** `prerelease` also offers release candidates. */
   updateChannel: UpdateChannel;
+  /** Hosts the user says are on a private network (VPN, office). */
+  privateNetworks: PrivateNetworkPattern[];
+  /** Also treat names and ranges that can only be private (`*.internal`, `10.0.0.0/8`, …) as private. */
+  privateNetworkBuiltIns: boolean;
 }
 
 export type UpdateChannel = 'stable' | 'prerelease';

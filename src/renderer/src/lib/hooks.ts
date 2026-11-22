@@ -8,6 +8,10 @@ export function useInstalled() {
   return useQuery({ queryKey: ['installed'], queryFn: api.installedList, staleTime: 5_000 });
 }
 
+export function useSettings() {
+  return useQuery({ queryKey: ['settings'], queryFn: api.settingsGet });
+}
+
 export function useRegistries() {
   return useQuery({ queryKey: ['registries'], queryFn: api.registriesList });
 }

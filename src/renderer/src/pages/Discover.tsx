@@ -2,11 +2,12 @@ import { useInfiniteQuery, useQueries } from '@tanstack/react-query';
 import { Library, Search, Sparkles, TriangleAlert, WifiOff } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { FEATURED } from '@shared/featured';
+import { privateNetworkFor, registryPrivateNetwork } from '@shared/private-network';
 import { OFFICIAL_REGISTRY_ID, type CatalogItem, type RegistryInfo } from '@shared/registry';
-import { ClientMark, displayName, ServerIcon } from '../components/bits';
+import { ClientMark, displayName, PrivateNetworkBadge, ServerIcon } from '../components/bits';
 import { Badge, Button, Callout, cx, Empty, Input, PageHeader, Spinner } from '../components/ui';
 import { api, errorMessage } from '../lib/api';
-import { useInstalledByServer, useRegistries } from '../lib/hooks';
+import { useInstalledByServer, useRegistries, useSettings } from '../lib/hooks';
 
 function useDebounced<T>(value: T, ms: number): T {
   const [v, setV] = useState(value);
@@ -25,6 +26,8 @@ function ServerCard({ item, onOpen, category, registry }: { item: CatalogItem; o
   const installed = useInstalledByServer(item.registryId, server.name);
   const local = !!server.packages?.length;
   const hosted = !!server.remotes?.length;
+  const settings = useSettings();
+  const privateNetwork = privateNetworkFor(registryPrivateNetwork(server), server.remotes?.map((r) => r.url) ?? [], settings.data);
   return (
     <button
       type="button"
@@ -48,6 +51,7 @@ function ServerCard({ item, onOpen, category, registry }: { item: CatalogItem; o
         )}
         {local && <Badge>local</Badge>}
         {hosted && <Badge>hosted</Badge>}
+        <PrivateNetworkBadge network={privateNetwork} />
         <Badge>v{server.version}</Badge>
         {installed.length > 0 && (
           <span className="ml-auto flex -space-x-1">

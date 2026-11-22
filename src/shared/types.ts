@@ -1,5 +1,7 @@
 // Domain types shared by the main process and the renderer.
 
+import type { PrivateNetwork } from './private-network';
+
 export const CLIENT_IDS = ['claude-desktop', 'claude-code', 'vscode', 'cursor', 'codex', 'copilot-cli', 'opencode', 'pi', 'junie', 'jetbrains-air', 'zed'] as const;
 export type ClientId = (typeof CLIENT_IDS)[number];
 
@@ -57,6 +59,8 @@ export interface InstallSource {
   registryName: string;
   version: string;
   variant: VariantRef;
+  /** The registry's `private` flag when it was installed: the server only works on a private network. */
+  privateNetwork?: { vpn?: string };
 }
 
 export type VariantRef = { kind: 'package'; index: number } | { kind: 'remote'; index: number } | { kind: 'custom' };
@@ -174,6 +178,10 @@ export interface HealthResult {
    */
   signIn?: { available: boolean; reason?: string };
   error?: string;
+  /** Set when a remote server couldn't be reached at all: its name doesn't resolve, nothing answered, or there's no route. */
+  unreachable?: { cause: 'dns' | 'timeout' | 'route'; host: string };
+  /** Set on failure when Kumi knows the server is on a private network: its registry says so, or its host matches a pattern. */
+  privateNetwork?: PrivateNetwork;
   stderr?: string;
   durationMs: number;
 }
@@ -181,4 +189,6 @@ export interface HealthResult {
 export interface HealthTestOptions {
   /** Sign in through the browser when the server asks for OAuth, then list its tools. */
   signIn?: boolean;
+  /** The registry's `private` flag for this server, when it has one. */
+  privateNetwork?: { vpn?: string };
 }

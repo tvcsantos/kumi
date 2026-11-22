@@ -8,6 +8,8 @@ const DEFAULTS: Settings = {
   setupDone: false,
   autoCheckUpdates: true,
   updateChannel: 'stable',
+  privateNetworks: [],
+  privateNetworkBuiltIns: true,
 };
 
 export class SettingsStore {
