@@ -62,7 +62,7 @@ const version = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).ver
 const tag = `v${version}`;
 
 const lines = trailerLines(trailers);
-const message = [version, ...(lines.length ? ['', ...lines] : [])].join('\n');
+const message = [`build: release v${version}`, ...(lines.length ? ['', ...lines] : [])].join('\n');
 
 git('add', 'package.json', 'package-lock.json');
 git('commit', '-m', message);
