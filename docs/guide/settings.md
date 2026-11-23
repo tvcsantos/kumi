@@ -28,6 +28,18 @@ The default secrets mode for new installs. You can still change it per install. 
 - **Write secrets into config files** (works everywhere)
 - **Use the app's secure storage where available** (VS Code)
 
+## Updates
+
+Kumi asks GitHub for new releases when it starts and every few hours. Where it can update itself (macOS from the DMG, Windows, AppImage), it downloads the update in the background and installs it when you quit or click **Restart to update**. Homebrew installs show the `brew upgrade --cask kumi` command, and `.deb` installs link to the new package.
+
+- **Check for updates automatically**: on by default. When it's off, Kumi still checks, but only tells you about important and required updates. **Check for updates** on the About page always looks.
+- **Channel**: stable releases only, or release candidates too.
+
+Some releases are marked:
+
+- **Important**: the update banner can't be dismissed, and shows while the update downloads.
+- **Required**, for serious security fixes: Kumi shows only an update screen until you update. It still lets you read the release notes, show the log, open About and quit. Kumi remembers this, so it applies from startup, offline included.
+
 ## Apps
 
 Every app Kumi supports, whether it was detected on this machine, and where it keeps its global MCP config. **Open** opens the file in your default editor; the folder button shows it in Finder or Explorer. See [Supported apps](../reference/apps).

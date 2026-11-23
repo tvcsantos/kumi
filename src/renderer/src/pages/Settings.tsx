@@ -316,6 +316,7 @@ export function Settings() {
           />
           Check for updates automatically
         </label>
+        <p className="mt-1 ml-6 text-xs text-muted">When this is off, Kumi still checks, but only tells you about important and required updates.</p>
         <Select
           value={settings.data?.updateChannel ?? 'stable'}
           // Look again right away, so the banner and About match the new channel.

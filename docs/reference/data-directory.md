@@ -65,6 +65,8 @@ Each record holds the app, scope, config path and server name, where the server 
 
 Deleting a record doesn't touch your config; Kumi just treats that entry as added by hand.
 
+`updateMarkers` lists releases newer than this Kumi that were marked important or required, so the requirement still applies offline. Each entry drops out once Kumi is on that version.
+
 ## cache/registry.json
 
 Registry responses, keyed by URL. An entry is fresh for ten minutes; older entries are used only when the registry can't be reached. The cache keeps the 500 most recent responses. It's safe to delete.

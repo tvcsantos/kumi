@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Check, Copy, Download, ExternalLink, RefreshCw, RotateCw, Sparkles, X } from 'lucide-react';
+import { Check, Copy, Download, ExternalLink, RefreshCw, RotateCw, ShieldAlert, Sparkles, X } from 'lucide-react';
 import { useState } from 'react';
 import type { UpdateStatus } from '@shared/api';
 import { api, errorMessage } from '../lib/api';
@@ -27,7 +27,7 @@ export function useCheckForUpdates() {
   });
 }
 
-function useUpdateActions() {
+export function useUpdateActions() {
   const queryClient = useQueryClient();
   const set = (s: UpdateStatus) => queryClient.setQueryData(KEY, s);
   return {
@@ -37,11 +37,11 @@ function useUpdateActions() {
   };
 }
 
-function open(url: string) {
+export function open(url: string) {
   api.openExternal(url).catch((e) => window.alert(errorMessage(e)));
 }
 
-function CopyCommand({ command }: { command: string }) {
+export function CopyCommand({ command }: { command: string }) {
   const [copied, setCopied] = useState(false);
   const copy = () =>
     api
@@ -62,7 +62,7 @@ function CopyCommand({ command }: { command: string }) {
 }
 
 /** What the user can do about an update: restart into it, retry a failed download, or get it themselves. */
-function UpdateActions({ status }: { status: UpdateStatus }) {
+export function UpdateActions({ status }: { status: UpdateStatus }) {
   const { retry, restart } = useUpdateActions();
   const latest = status.latest!;
 
@@ -105,6 +105,7 @@ function UpdateActions({ status }: { status: UpdateStatus }) {
 function bannerText(status: UpdateStatus): React.ReactNode {
   const name = <span className="font-medium">Kumi {status.latest!.version}</span>;
   if (status.state === 'ready') return <>{name} is ready. It installs when you quit Kumi.</>;
+  if (status.state === 'downloading') return <>{name} is downloading…</>;
   if (status.inApp) return <>{name} is available, but it couldn't be downloaded.</>;
   if (status.command) return <>{name} is available. Update it with Homebrew:</>;
   return <>{name} is available.</>;
@@ -114,20 +115,46 @@ function bannerText(status: UpdateStatus): React.ReactNode {
  * Shown above every page, until dismissed for this session, when there's something to do:
  * a downloaded update to restart into, a failed download, or an update to get by hand.
  * A download in progress stays quiet; About shows it.
+ * An important update can't be dismissed, and shows while it downloads too.
  */
 export function UpdateBanner() {
   const { data: status } = useUpdateStatus();
   const { dismiss } = useUpdateActions();
   if (!status?.latest || status.dismissed) return null;
-  const show = status.state === 'ready' || (status.state === 'available' && (!status.inApp || !!status.error));
+  const important = status.urgency?.level === 'important';
+  const show =
+    status.state === 'ready' ||
+    (status.state === 'available' && (!status.inApp || !!status.error)) ||
+    (important && (status.state === 'available' || status.state === 'downloading'));
   if (!show) return null;
 
   return (
-    <div role="status" className="mb-5 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-2xl border border-line bg-accent-soft px-4 py-2.5 text-sm">
-      <Sparkles className="size-4 shrink-0 text-accent" />
-      <span className="flex-1">{bannerText(status)}</span>
-      <UpdateActions status={status} />
-      <Button size="sm" variant="ghost" icon={<X className="size-3.5" />} aria-label="Dismiss" onClick={() => dismiss.mutate(status.latest!.version)} />
+    <div
+      role="status"
+      className={`mb-5 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-2xl border border-line px-4 py-2.5 text-sm ${important ? 'bg-warn-soft' : 'bg-accent-soft'}`}
+    >
+      {important ? <ShieldAlert className="size-4 shrink-0 text-warn" /> : <Sparkles className="size-4 shrink-0 text-accent" />}
+      <span className="flex-1">
+        {important && <span className="font-medium">Important update. </span>}
+        {bannerText(status)}
+        {important && status.urgency?.reason && <span className="block text-muted">{status.urgency.reason}</span>}
+      </span>
+      {status.state !== 'downloading' && <UpdateActions status={status} />}
+      {!important && <Button size="sm" variant="ghost" icon={<X className="size-3.5" />} aria-label="Dismiss" onClick={() => dismiss.mutate(status.latest!.version)} />}
+    </div>
+  );
+}
+
+export function DownloadProgress({ status }: { status: UpdateStatus }) {
+  const progress = status.progress ?? 0;
+  return (
+    <div className="space-y-1.5">
+      <span>
+        Downloading <span className="font-medium">Kumi {status.latest?.version}</span>… {Math.round(progress * 100)}%
+      </span>
+      <div className="h-1.5 max-w-sm overflow-hidden rounded-full bg-sunken">
+        <div className="h-full rounded-full bg-accent transition-[width]" style={{ width: `${progress * 100}%` }} />
+      </div>
     </div>
   );
 }
@@ -149,16 +176,7 @@ export function UpdateCard() {
       line = <Spinner label="Checking for updates…" />;
       break;
     case 'downloading':
-      line = (
-        <div className="space-y-1.5">
-          <span>
-            Downloading {version}… {Math.round((status.progress ?? 0) * 100)}%
-          </span>
-          <div className="h-1.5 max-w-sm overflow-hidden rounded-full bg-sunken">
-            <div className="h-full rounded-full bg-accent transition-[width]" style={{ width: `${(status.progress ?? 0) * 100}%` }} />
-          </div>
-        </div>
-      );
+      line = <DownloadProgress status={status} />;
       break;
     case 'ready':
       line = <span>{version} is ready. It installs when you quit Kumi.</span>;
@@ -191,6 +209,11 @@ export function UpdateCard() {
         <div className="flex flex-wrap items-center gap-2">
           <UpdateActions status={status} />
         </div>
+      )}
+      {status.urgency && (
+        <p className="text-xs text-warn">
+          {status.urgency.level === 'required' ? 'Required' : 'Important'} update{status.urgency.reason ? `: ${status.urgency.reason}` : '.'}
+        </p>
       )}
       {status.error && status.state !== 'error' && <p className="text-xs text-danger">{status.error}</p>}
       {status.installKind === 'homebrew' && status.state !== 'available' && (

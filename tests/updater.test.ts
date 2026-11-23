@@ -5,14 +5,15 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ReleaseInfo, UpdateChannel } from '@shared/api';
 import type { Fetch } from '../src/main/catalog/http';
-import { DOWNLOAD_BASE, latestRelease, releaseFeed, releaseFileUrl, RELEASES_URL } from '../src/main/updater/github';
+import { checkReleases, DOWNLOAD_BASE, releaseFeed, releaseFileUrl, RELEASES_URL } from '../src/main/updater/github';
+import { markersIn, mergeMarkers, releasePlatform, urgencyOf, type UpdateMarker } from '../src/main/updater/levels';
 import type { Installer } from '../src/main/updater/installer';
 import { bundlePath, downloadVerified, MacInstaller, pickZip } from '../src/main/updater/mac-installer';
 import { BREW_UPGRADE, CASKROOMS, detectInstallKind } from '../src/main/updater/install-kind';
-import { CHECK_INTERVAL_MS, FIRST_CHECK_DELAY_MS, UpdateService } from '../src/main/updater/service';
+import { CHECK_INTERVAL_MS, UpdateService, type MarkerStore } from '../src/main/updater/service';
 import { compareVersions, isNewer, parseVersion } from '../src/main/updater/version';
 
-const rel = (tag: string, extra: { draft?: boolean; prerelease?: boolean } = {}) => ({
+const rel = (tag: string, extra: { draft?: boolean; prerelease?: boolean; body?: string } = {}) => ({
   tag_name: tag,
   html_url: `https://github.com/tvcsantos/kumi/releases/tag/${tag}`,
   name: `Kumi ${tag.slice(1)}`,
@@ -76,27 +77,88 @@ describe('latestRelease', () => {
 
   it('picks the newest stable release, skipping drafts, pre-releases and odd tags', async () => {
     const calls: { url: string; headers: Record<string, string> }[] = [];
-    const r = await latestRelease(fakeFetch(list, { status: 200 }, calls), 'stable', 'Kumi/0.1.3');
+    const { latest: r } = await checkReleases(fakeFetch(list, { status: 200 }, calls), 'stable', 'mac', 'Kumi/0.1.3');
     expect(r).toEqual({ version: '0.1.4', url: rel('v0.1.4').html_url, name: 'Kumi 0.1.4', publishedAt: '2026-11-01T00:00:00Z', prerelease: false });
     expect(calls[0]!.url).toBe(RELEASES_URL);
     expect(calls[0]!.headers['User-Agent']).toBe('Kumi/0.1.3');
   });
 
   it('includes release candidates on the prerelease channel', async () => {
-    expect((await latestRelease(fakeFetch(list), 'prerelease', 'Kumi'))?.version).toBe('0.2.0-rc.1');
+    expect((await checkReleases(fakeFetch(list), 'prerelease', 'mac', 'Kumi')).latest?.version).toBe('0.2.0-rc.1');
   });
 
   it('returns null when nothing qualifies', async () => {
-    expect(await latestRelease(fakeFetch([rel('v9.0.0', { draft: true })]), 'stable', 'Kumi')).toBeNull();
+    expect((await checkReleases(fakeFetch([rel('v9.0.0', { draft: true })]), 'stable', 'mac', 'Kumi')).latest).toBeNull();
   });
 
   it('explains rate limits and other failures', async () => {
-    await expect(latestRelease(fakeFetch({}, { status: 403, headers: { 'x-ratelimit-remaining': '0' } }), 'stable', 'Kumi')).rejects.toThrow(/rate limit/);
-    await expect(latestRelease(fakeFetch({}, { status: 500, statusText: 'Server Error' }), 'stable', 'Kumi')).rejects.toThrow('GitHub answered 500 Server Error');
+    await expect(checkReleases(fakeFetch({}, { status: 403, headers: { 'x-ratelimit-remaining': '0' } }), 'stable', 'mac', 'Kumi')).rejects.toThrow(/rate limit/);
+    await expect(checkReleases(fakeFetch({}, { status: 500, statusText: 'Server Error' }), 'stable', 'mac', 'Kumi')).rejects.toThrow('GitHub answered 500 Server Error');
     const offline = (async () => {
       throw new TypeError('fetch failed', { cause: Object.assign(new Error('getaddrinfo ENOTFOUND api.github.com'), { code: 'ENOTFOUND' }) });
     }) as Fetch;
-    await expect(latestRelease(offline, 'stable', 'Kumi')).rejects.toThrow(/Couldn't reach GitHub: getaddrinfo ENOTFOUND/);
+    await expect(checkReleases(offline, 'stable', 'mac', 'Kumi')).rejects.toThrow(/Couldn't reach GitHub: getaddrinfo ENOTFOUND/);
+  });
+
+  it('collects the requirements releases on the channel list, for this platform', async () => {
+    const carried = '<!-- kumi:important 0.3.0 -->\n<!-- kumi:required 0.2.1 platforms=windows Windows only -->\n<!-- kumi:required 0.2.0 Fixes a token leak -->';
+    const marked = [
+      rel('v0.3.0', { body: `${carried}\n\nNotes` }),
+      rel('v0.2.0', { body: '<!-- kumi:required 0.2.0 Fixes a token leak -->' }),
+      rel('v0.4.0-rc.1', { prerelease: true, body: `<!-- kumi:required 0.4.0-rc.1 -->\n${carried}` }),
+    ];
+    const stable = await checkReleases(fakeFetch(marked), 'stable', 'mac', 'Kumi');
+    expect(stable.markers).toContainEqual({ level: 'important', reason: undefined, version: '0.3.0', url: rel('v0.3.0').html_url, prerelease: false });
+    // A line links to the release it names, when that's in the list.
+    expect(stable.markers).toContainEqual({ level: 'required', reason: 'Fixes a token leak', version: '0.2.0', url: rel('v0.2.0').html_url, prerelease: false });
+    expect(stable.markers.some((m) => m.version === '0.2.1' || m.version === '0.4.0-rc.1')).toBe(false);
+    const pre = await checkReleases(fakeFetch(marked), 'prerelease', 'windows', 'Kumi');
+    expect(new Set(pre.markers.map((m) => m.version))).toEqual(new Set(['0.3.0', '0.2.1', '0.2.0', '0.4.0-rc.1']));
+  });
+});
+
+describe('update levels', () => {
+  const marker = (level: 'important' | 'required', version: string, prerelease = false): UpdateMarker => ({
+    level,
+    version,
+    prerelease,
+    url: `https://example.com/${version}`,
+  });
+
+  it('reads the lines that apply on this platform', () => {
+    const url = (v: string) => `https://example.com/${v}`;
+    const body = '<!-- kumi:required 3.0.0 platforms=mac Keychain -->\n<!-- kumi:required 2.0.0 Token leak -->\n<!-- kumi:important 2.2.0-rc.1 platforms=windows -->';
+    expect(markersIn(body, 'mac', url)).toEqual([
+      { level: 'required', version: '3.0.0', reason: 'Keychain', url: url('3.0.0'), prerelease: false },
+      { level: 'required', version: '2.0.0', reason: 'Token leak', url: url('2.0.0'), prerelease: false },
+    ]);
+    expect(markersIn(body, 'windows', url).map((m) => [m.version, m.prerelease])).toEqual([
+      ['2.0.0', false],
+      ['2.2.0-rc.1', true],
+    ]);
+    expect(markersIn(null, 'mac', url)).toEqual([]);
+  });
+
+  it('maps Node platforms to marker platforms', () => {
+    expect([releasePlatform('darwin'), releasePlatform('win32'), releasePlatform('linux')]).toEqual(['mac', 'windows', 'linux']);
+  });
+
+  it('keeps the newest marker per level and channel, dropping what this version satisfies', () => {
+    const merged = mergeMarkers([marker('required', '0.2.0'), marker('important', '0.1.0')], [marker('required', '0.3.0'), marker('required', '0.3.0-rc.1', true)], '0.1.5');
+    expect(merged).toEqual([marker('required', '0.3.0'), marker('required', '0.3.0-rc.1', true)]);
+    // No withdrawals: a marker missing from a later check stays.
+    expect(mergeMarkers(merged, [], '0.1.5')).toEqual(merged);
+    expect(mergeMarkers(merged, [], '0.3.0')).toEqual([]);
+  });
+
+  it('applies the highest level a newer release carries, on the right channel', () => {
+    const markers = [marker('important', '0.4.0'), marker('required', '0.3.0'), marker('required', '0.5.0-rc.1', true)];
+    expect(urgencyOf(markers, '0.2.0', 'stable')).toEqual({ level: 'required', version: '0.3.0', url: 'https://example.com/0.3.0', reason: undefined });
+    // Past the required release, the important one still applies.
+    expect(urgencyOf(markers, '0.3.0', 'stable')?.level).toBe('important');
+    expect(urgencyOf(markers, '0.4.0', 'stable')).toBeUndefined();
+    // A marked release candidate only applies on the prerelease channel.
+    expect(urgencyOf(markers, '0.4.0', 'prerelease')).toMatchObject({ level: 'required', version: '0.5.0-rc.1' });
   });
 });
 
@@ -107,6 +169,7 @@ describe('UpdateService', () => {
     new UpdateService({
       currentVersion: over.version ?? '0.1.3',
       installKind: over.kind ?? 'mac',
+      platform: 'mac',
       settings: async () => ({ autoCheckUpdates: over.auto ?? true, updateChannel: over.channel ?? 'stable' }),
       fetch,
       now: () => 1000,
@@ -150,20 +213,95 @@ describe('UpdateService', () => {
     expect((await s.check()).dismissed).toBe(false);
   });
 
-  it('checks on a timer while the setting is on, and never in dev builds', async () => {
+  it('checks at startup and on a timer, whatever the setting, and never in dev builds', async () => {
     vi.useFakeTimers();
     const calls: { url: string; headers: Record<string, string> }[] = [];
     const on = service(fakeFetch([rel('v0.1.4')], { status: 200 }, calls));
     const off = service(fakeFetch([rel('v0.1.4')], { status: 200 }, calls), { auto: false });
     const dev = service(fakeFetch([rel('v0.1.4')], { status: 200 }, calls), { kind: 'dev' });
     for (const s of [on, off, dev]) s.start();
-    await vi.advanceTimersByTimeAsync(FIRST_CHECK_DELAY_MS);
-    expect(calls).toHaveLength(1);
-    await vi.advanceTimersByTimeAsync(CHECK_INTERVAL_MS);
+    await vi.advanceTimersByTimeAsync(0);
     expect(calls).toHaveLength(2);
+    await vi.advanceTimersByTimeAsync(CHECK_INTERVAL_MS);
+    expect(calls).toHaveLength(4);
     for (const s of [on, off, dev]) s.stop();
     await vi.advanceTimersByTimeAsync(CHECK_INTERVAL_MS);
-    expect(calls).toHaveLength(2);
+    expect(calls).toHaveLength(4);
+  });
+
+  it('stays silent about ordinary releases when automatic checks are off, unless asked', async () => {
+    const s = service(fakeFetch([rel('v0.1.4')]), { auto: false });
+    const quiet = await s.check(true);
+    expect(quiet.state).toBe('idle');
+    expect(quiet.latest).toBeUndefined();
+    expect(await s.check()).toMatchObject({ state: 'available', latest: { version: '0.1.4' } });
+    // A failed quiet check doesn't show either.
+    const offline = service((async () => new Response('{}', { status: 502 })) as Fetch, { auto: false });
+    const failed = await offline.check(true);
+    expect(failed.state).toBe('idle');
+    expect(failed.error).toBeUndefined();
+  });
+
+  it('acts on marked releases even when automatic checks are off', async () => {
+    const s = service(fakeFetch([rel('v0.1.5', { body: '<!-- kumi:required 0.1.4 Fixes a token leak -->' })]), { auto: false });
+    expect(await s.check(true)).toMatchObject({
+      state: 'available',
+      latest: { version: '0.1.5' },
+      urgency: { level: 'required', version: '0.1.4', reason: 'Fixes a token leak' },
+    });
+  });
+
+  it('forces an update past a required release that is no longer listed, from what a newer one carries', async () => {
+    // On 1.0.0; 2.0.0 was required and has dropped off the list; 3.0.0 is an ordinary release that carries it.
+    const s = service(fakeFetch([rel('v3.0.0', { body: '<!-- kumi:required 2.0.0 Fixes a token leak -->\n\nNotes' })]), { version: '1.0.0' });
+    expect(await s.check()).toMatchObject({
+      state: 'available',
+      latest: { version: '3.0.0' },
+      urgency: { level: 'required', version: '2.0.0', reason: 'Fixes a token leak', url: rel('v3.0.0').html_url },
+    });
+    // Past 2.0.0, the same notes ask for nothing.
+    const later = service(fakeFetch([rel('v3.0.0', { body: '<!-- kumi:required 2.0.0 Fixes a token leak -->' })]), { version: '2.5.0' });
+    expect((await later.check()).urgency).toBeUndefined();
+  });
+
+  it("can't dismiss an important update", async () => {
+    const s = service(fakeFetch([rel('v0.1.4', { body: '<!-- kumi:important 0.1.4 -->' })]));
+    await s.check();
+    expect(s.dismiss('0.1.4')).toMatchObject({ dismissed: false, urgency: { level: 'important' } });
+  });
+
+  it('remembers markers, so they apply from startup and after the release drops off the list', async () => {
+    let saved: UpdateMarker[] = [];
+    const store: MarkerStore = { load: async () => saved, save: async (m) => void (saved = m) };
+    const make = (fetch: Fetch, version = '0.1.3') =>
+      new UpdateService({ currentVersion: version, installKind: 'mac', platform: 'mac', markers: store, settings: async () => ({ autoCheckUpdates: true, updateChannel: 'stable' }), fetch });
+
+    await make(fakeFetch([rel('v0.1.4', { body: '<!-- kumi:required 0.1.4 -->' })])).check();
+    expect(saved).toMatchObject([{ level: 'required', version: '0.1.4' }]);
+
+    const next = make(fakeFetch([]));
+    await next.load();
+    expect(next.get().urgency).toMatchObject({ level: 'required', version: '0.1.4' });
+    // The release is gone from the feed; the requirement isn't.
+    await next.check();
+    expect(next.get().urgency?.level).toBe('required');
+
+    // Once on the marked version, it no longer applies.
+    const updated = make(fakeFetch([]), '0.1.4');
+    await updated.load();
+    expect(updated.get().urgency).toBeUndefined();
+  });
+
+  it('ignores markers when told to (dev builds)', async () => {
+    const s = new UpdateService({
+      currentVersion: '0.1.3',
+      installKind: 'dev',
+      platform: 'mac',
+      ignoreMarkers: true,
+      settings: async () => ({ autoCheckUpdates: true, updateChannel: 'stable' }),
+      fetch: fakeFetch([rel('v0.1.4', { body: '<!-- kumi:required 0.1.4 -->' })]),
+    });
+    expect((await s.check()).urgency).toBeUndefined();
   });
 });
 
@@ -297,6 +435,7 @@ describe('UpdateService with an installer', () => {
     new UpdateService({
       currentVersion: '0.1.5',
       installKind: 'mac',
+      platform: 'mac',
       installer,
       settings: async () => ({ autoCheckUpdates: true, updateChannel: 'stable' }),
       fetch: feedOf(tags),

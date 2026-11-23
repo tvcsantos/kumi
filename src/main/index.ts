@@ -17,6 +17,7 @@ import { trustSystemCertificates } from './tls';
 import { createInstaller } from './updater/create';
 import { releaseFeed } from './updater/github';
 import { detectInstallKind } from './updater/install-kind';
+import { releasePlatform } from './updater/levels';
 import { bundlePath } from './updater/mac-installer';
 import { UpdateService } from './updater/service';
 
@@ -98,9 +99,14 @@ async function startServices(): Promise<Services> {
     currentVersion: app.getVersion(),
     installKind,
     installer: createInstaller(installKind, feed),
+    platform: releasePlatform(process.platform),
+    markers: { load: () => state.updateMarkers(), save: (m) => state.setUpdateMarkers(m) },
+    // Dev builds only honour markers from a test feed, so the block screen can be tried out.
+    ignoreMarkers: installKind === 'dev' && !feed.custom,
     releasesUrl: feed.releasesUrl,
     settings: () => settings.get(),
   });
+  await updates.load();
   updates.start();
   return { env, dataDir, catalog, installer, state, backups, settings, updates };
 }

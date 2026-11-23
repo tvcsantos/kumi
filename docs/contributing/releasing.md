@@ -5,9 +5,11 @@ Releases are built by [`.github/workflows/release.yml`](https://github.com/tvcsa
 ## Cut a release
 
 ```bash
-npm version minor          # or patch / major / 0.2.0-rc.1; commits and tags vX.Y.Z
+npm run release -- minor   # or patch / major / 0.2.0-rc.1 / prerelease --preid rc; commits and tags vX.Y.Z
 git push --follow-tags
 ```
+
+`npm run release` needs a clean working tree. It bumps `package.json` and `package-lock.json`, commits, and creates the annotated tag. It doesn't push.
 
 The workflow then:
 
@@ -20,6 +22,38 @@ The workflow then:
 4. Publishes a GitHub release with generated notes and all the installers.
 
 Tags with a suffix such as `-rc.1` become pre-releases. Re-running the workflow after a partial failure uploads to the existing release instead of failing.
+
+## Important and required updates
+
+To make users update, release with `release:important` or `release:required`. The reason is optional:
+
+```bash
+npm run release:required -- patch "Fixes a token leak in OAuth refresh"
+npm run release:important -- minor "Fixes installs failing for Zed" --platforms windows,linux
+git push --follow-tags
+```
+
+These add trailers to the tag's message (and the commit's):
+
+| Trailer | Values |
+|---|---|
+| `Kumi-Update` | `important`: a banner that can't be dismissed. `required`: Kumi blocks everything but the update until it's installed. |
+| `Kumi-Update-Reason` | Optional. One line shown to users. It can't contain `--`. |
+| `Kumi-Update-Platforms` | Optional: `mac`, `windows`, `linux`, separated by commas. All platforms when left out. |
+
+The workflow checks the trailers before building. Every release's notes then start with hidden lines listing the requirements still in force, one per level (and per platform set):
+
+```
+<!-- kumi:required 3.0.0 platforms=mac Fixes keychain access on macOS -->
+<!-- kumi:required 2.0.0 Fixes a token leak in OAuth refresh -->
+<!-- kumi:important 2.2.0 platforms=windows Fixes installs failing for Zed -->
+```
+
+A line means every version older than the one it names must update, on those platforms, to the latest release. The workflow copies the previous release's lines, adds this tag's, and drops any line a newer one covers (at least as severe, at least as new, on the same platforms or more). So an ordinary release still carries an earlier requirement, and the newest release alone tells Kumi what applies: someone on 1.0.0 is forced past a required 2.0.0 even when the newest release is an ordinary 3.0.0.
+
+Requirements apply even when users turned automatic checks off. Kumi remembers them, and they can't be withdrawn. To add one to a published release, add a line to the newest release's notes on GitHub; the next release carries it forward.
+
+A stable release only carries lines from stable releases, so a requirement set on a release candidate stays on the release candidate channel. To require the fix for stable users too, tag the stable release as required. The format and the carrying rules are in [`scripts/release-levels.mjs`](https://github.com/tvcsantos/kumi/blob/main/scripts/release-levels.mjs); Kumi reads the lines in [`src/main/updater/levels.ts`](https://github.com/tvcsantos/kumi/blob/main/src/main/updater/levels.ts).
 
 ## Homebrew cask
 

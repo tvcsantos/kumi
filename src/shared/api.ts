@@ -26,7 +26,10 @@ export interface Settings {
   theme: ThemeSetting;
   /** The first-run welcome screen has been completed. */
   setupDone: boolean;
-  /** Check GitHub for a newer Kumi on startup and every few hours. */
+  /**
+   * Tell the user about every new release, and download it in the background. When off, Kumi still
+   * checks on startup and every few hours, but only acts on important and required updates.
+   */
   autoCheckUpdates: boolean;
   /** `prerelease` also offers release candidates. */
   updateChannel: UpdateChannel;
@@ -53,6 +56,19 @@ export interface ReleaseInfo {
   prerelease: boolean;
 }
 
+/** `important` shows a banner that can't be dismissed; `required` blocks Kumi until it updates. */
+export type UpdateLevel = 'important' | 'required';
+
+export interface UpdateUrgency {
+  level: UpdateLevel;
+  /** The release that was marked. Every older version must update. */
+  version: string;
+  /** Its release page. */
+  url: string;
+  /** Why, from the marker. */
+  reason?: string;
+}
+
 export interface UpdateStatus {
   /**
    * `available` → `downloading` → `ready` for installs Kumi updates itself (`inApp`).
@@ -74,8 +90,10 @@ export interface UpdateStatus {
   /** When the last check finished (ms since epoch). */
   checkedAt?: number;
   error?: string;
-  /** The banner for `latest` was dismissed this session. */
+  /** The banner for `latest` was dismissed this session. Never true while `urgency` is set. */
   dismissed: boolean;
+  /** Set when a release newer than this one is marked important or required. Known before any check, once seen. */
+  urgency?: UpdateUrgency;
 }
 
 export interface AppInfo {
@@ -140,6 +158,8 @@ export interface KumiApi {
   /** Shows Kumi's log file in the file manager (or its folder, before anything was logged). */
   revealLog(): Promise<void>;
   copyText(text: string): Promise<void>;
+  /** Quits Kumi. A downloaded update installs on the way out. */
+  appQuit(): Promise<void>;
 }
 
 export const API_METHODS = [
@@ -177,6 +197,23 @@ export const API_METHODS = [
   'updateRestart',
   'revealLog',
   'copyText',
+  'appQuit',
+] as const satisfies readonly (keyof KumiApi)[];
+
+/** What still works while an update is required: the update itself, the release notes, the log, About and quitting. */
+export const ALLOWED_WHILE_UPDATE_REQUIRED = [
+  'appInfo',
+  'clientsList',
+  'settingsGet',
+  'installedList',
+  'openExternal',
+  'updateStatus',
+  'updateCheck',
+  'updateDownload',
+  'updateRestart',
+  'revealLog',
+  'copyText',
+  'appQuit',
 ] as const satisfies readonly (keyof KumiApi)[];
 
 export type IpcResult<T> = { ok: true; value: T } | { ok: false; error: string };

@@ -5,7 +5,7 @@ import { mkdir } from 'node:fs/promises';
 import { dirname, isAbsolute } from 'node:path';
 import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeTheme, shell } from 'electron';
 import { z } from 'zod';
-import { API_METHODS, channel, type IpcResult, type KumiApi } from '@shared/api';
+import { ALLOWED_WHILE_UPDATE_REQUIRED, API_METHODS, channel, type IpcResult, type KumiApi } from '@shared/api';
 import { normalizePattern, patternError } from '@shared/private-network';
 import { CLIENT_IDS, type ClientInfo } from '@shared/types';
 import type { Catalog } from './catalog/catalog';
@@ -208,15 +208,28 @@ function createHandlers(s: Services): Handlers {
       }
     },
     copyText: async (text) => clipboard.writeText(z.string().max(10_000).parse(text)),
+    appQuit: async () => {
+      // Answer the renderer first; quitting closes its window.
+      setImmediate(() => app.quit());
+    },
   };
 }
 
-/** Registers every handler right away; calls made while services are still starting wait for them. */
+const allowedWhileRequired = new Set<string>(ALLOWED_WHILE_UPDATE_REQUIRED);
+
+/**
+ * Registers every handler right away; calls made while services are still starting wait for them.
+ * While an update is required, only the calls the block screen needs go through. A call already
+ * running (an install being written, say) finishes.
+ */
 export function registerIpc(services: Promise<Services>) {
   const handlers = services.then(createHandlers);
   for (const method of API_METHODS) {
     ipcMain.handle(channel(method), async (_event, ...args): Promise<IpcResult<unknown>> => {
       try {
+        if (!allowedWhileRequired.has(method) && (await services).updates.get().urgency?.level === 'required') {
+          return { ok: false, error: 'Kumi needs to be updated before it can do this.' };
+        }
         const handler = (await handlers)[method] as (...a: unknown[]) => Promise<unknown>;
         return { ok: true, value: await handler(...args) };
       } catch (e) {

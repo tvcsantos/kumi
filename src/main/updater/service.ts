@@ -1,17 +1,25 @@
 // Checks for newer Kumi releases and, where this install can update itself, downloads them in the
 // background. Kumi never restarts on its own: a downloaded update installs when the user quits
 // or clicks "Restart to update", so nothing interrupts an install in progress.
+//
+// Releases marked important or required (see levels.ts) are acted on even when automatic checks
+// are off, and remembered, so a required update blocks Kumi from startup until it's installed.
 
-import type { InstallKind, Settings, UpdateStatus } from '@shared/api';
+import type { InstallKind, Settings, UpdateChannel, UpdateStatus, UpdateUrgency } from '@shared/api';
 import type { Fetch } from '../catalog/http';
-import { latestRelease, RELEASES_URL } from './github';
+import { checkReleases, RELEASES_URL } from './github';
 import type { Installer } from './installer';
 import { updateCommand } from './install-kind';
+import { mergeMarkers, urgencyOf, type ReleasePlatform, type UpdateMarker } from './levels';
 import { isNewer } from './version';
 
-/** Give startup a moment before the first automatic check. */
-export const FIRST_CHECK_DELAY_MS = 10_000;
 export const CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
+
+/** Where marked releases are remembered between runs. */
+export interface MarkerStore {
+  load(): Promise<UpdateMarker[]>;
+  save(markers: UpdateMarker[]): Promise<void>;
+}
 
 export interface UpdateServiceOptions {
   currentVersion: string;
@@ -19,6 +27,11 @@ export interface UpdateServiceOptions {
   settings: () => Promise<Pick<Settings, 'autoCheckUpdates' | 'updateChannel'>>;
   /** Installs updates in place; null leaves them to the user or a package manager. */
   installer?: Installer | null;
+  /** Which platform a marker must name, when it names any. */
+  platform: ReleasePlatform;
+  markers?: MarkerStore;
+  /** Dev builds ignore markers, unless they're pointed at a test feed. */
+  ignoreMarkers?: boolean;
   releasesUrl?: string;
   fetch?: Fetch;
   now?: () => number;
@@ -38,6 +51,9 @@ export class UpdateService {
   private dismissed: string | null = null;
   private timers: ReturnType<typeof setTimeout>[] = [];
   private blockerChecked = false;
+  private markers: UpdateMarker[] = [];
+  /** The channel from the last time settings were read, so `get()` stays synchronous. */
+  private channel: UpdateChannel = 'stable';
 
   constructor(private readonly opts: UpdateServiceOptions) {
     this.status = {
@@ -52,12 +68,26 @@ export class UpdateService {
   }
 
   get(): UpdateStatus {
-    return { ...this.status, dismissed: !!this.status.latest && this.status.latest.version === this.dismissed };
+    const urgency = this.urgency();
+    return { ...this.status, urgency, dismissed: !urgency && !!this.status.latest && this.status.latest.version === this.dismissed };
   }
 
-  /** Checks now, then starts downloading a newer release when this install updates itself. Overlapping calls share one check. */
-  check(): Promise<UpdateStatus> {
-    this.checking ??= this.runCheck().finally(() => (this.checking = null));
+  /** Reads remembered markers, so a required update applies before the first check. Call once, before the window asks. */
+  async load(): Promise<void> {
+    try {
+      this.channel = (await this.opts.settings()).updateChannel;
+      if (!this.opts.ignoreMarkers) this.markers = mergeMarkers((await this.opts.markers?.load()) ?? [], [], this.opts.currentVersion);
+    } catch {
+      // Nothing remembered; the first check finds the markers again.
+    }
+  }
+
+  /**
+   * Checks now, then starts downloading a newer release when this install updates itself. Overlapping calls share one check.
+   * A `background` check with automatic checks off stays silent unless a release is marked important or required.
+   */
+  check(background = false): Promise<UpdateStatus> {
+    this.checking ??= this.runCheck(background).finally(() => (this.checking = null));
     return this.checking;
   }
 
@@ -103,14 +133,12 @@ export class UpdateService {
     return this.get();
   }
 
-  /** Checks shortly after startup and then every few hours, while the setting is on. Dev builds never check on their own. */
+  /** Checks right away and then every few hours, whatever the setting says. Dev builds never check on their own. */
   start(): void {
     if (this.opts.installKind === 'dev') return;
-    const tick = async () => {
-      if ((await this.opts.settings()).autoCheckUpdates) await this.check();
-    };
-    this.timers.push(setTimeout(() => void tick(), FIRST_CHECK_DELAY_MS));
-    const every = setInterval(() => void tick(), CHECK_INTERVAL_MS);
+    const tick = () => void this.check(true);
+    this.timers.push(setTimeout(tick, 0));
+    const every = setInterval(tick, CHECK_INTERVAL_MS);
     every.unref?.();
     this.timers.push(every);
   }
@@ -128,16 +156,39 @@ export class UpdateService {
     if (reason) this.status = { ...this.status, inApp: false, manualReason: reason };
   }
 
-  private async runCheck(): Promise<UpdateStatus> {
+  private urgency(): UpdateUrgency | undefined {
+    return urgencyOf(this.markers, this.opts.currentVersion, this.channel);
+  }
+
+  private async remember(found: UpdateMarker[]) {
+    if (this.opts.ignoreMarkers) return;
+    const next = mergeMarkers(this.markers, found, this.opts.currentVersion);
+    if (JSON.stringify(next) === JSON.stringify(this.markers)) return;
+    this.markers = next;
+    await this.opts.markers?.save(next).catch(() => {});
+  }
+
+  private async runCheck(background: boolean): Promise<UpdateStatus> {
     const now = this.opts.now ?? Date.now;
     await this.checkBlocker();
+    const { autoCheckUpdates, updateChannel } = await this.opts.settings();
+    this.channel = updateChannel;
+    // Automatic checks are off: look for marked releases without the user seeing a check happen.
+    const quiet = background && !autoCheckUpdates && !this.urgency();
     // A download in progress or waiting to install stays what the user sees; the check runs behind it.
     const busy = () => this.status.state === 'downloading' || this.status.state === 'ready';
     const before = this.status.state;
-    if (!busy()) this.status = { ...this.status, state: 'checking' };
+    if (!busy() && !quiet) this.status = { ...this.status, state: 'checking' };
     try {
-      const { updateChannel } = await this.opts.settings();
-      const latest = await latestRelease(this.opts.fetch ?? fetch, updateChannel, `Kumi/${this.opts.currentVersion}`, this.opts.releasesUrl ?? RELEASES_URL);
+      const { latest, markers } = await checkReleases(
+        this.opts.fetch ?? fetch,
+        updateChannel,
+        this.opts.platform,
+        `Kumi/${this.opts.currentVersion}`,
+        this.opts.releasesUrl ?? RELEASES_URL,
+      );
+      await this.remember(markers);
+      if (quiet && !this.urgency()) return this.get();
       const newer = !!latest && isNewer(latest.version, this.opts.currentVersion);
       if (busy() && (!newer || this.status.state === 'downloading' || this.ready === latest!.version)) {
         this.status = { ...this.status, checkedAt: now(), error: undefined };
@@ -148,6 +199,7 @@ export class UpdateService {
         await this.download();
       }
     } catch (e) {
+      if (quiet) return this.get();
       // A failed check doesn't hide an update an earlier one found.
       const state = busy() ? this.status.state : before === 'available' ? 'available' : 'error';
       this.status = { ...this.status, state, checkedAt: now(), error: message(e) };

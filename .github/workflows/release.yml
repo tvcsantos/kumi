@@ -1,9 +1,17 @@
 name: Release
 
 # Push a version tag to cut a release:
-#   npm version minor        # bumps package.json, commits, tags v0.2.0
+#   npm run release -- minor   # bumps package.json, commits, tags v0.2.0
 #   git push --follow-tags
 # Tags with a pre-release suffix (v0.2.0-rc.1) become GitHub pre-releases.
+#
+# To mark a release important or required, use `npm run release:required -- patch "reason"`
+# (or release:important). It adds trailers to the (annotated) tag's message:
+#   Kumi-Update: required                     # or important
+#   Kumi-Update-Reason: Fixes a token leak    # optional, one line
+#   Kumi-Update-Platforms: windows            # optional: mac, windows, linux; all when left out
+# Every release's notes start with hidden lines listing the requirements still in force: the
+# previous release's lines plus this tag's, pruned. Kumi reads them. See scripts/release-levels.mjs.
 
 on:
   push:
@@ -20,15 +28,70 @@ jobs:
   verify:
     name: Check version
     runs-on: ubuntu-latest
+    outputs:
+      levels: ${{ steps.tag.outputs.levels }}
     steps:
       - uses: actions/checkout@v7
-      - name: Tag matches package.json
-        run: |
-          version=$(node -p "require('./package.json').version")
-          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
-            echo "::error::Tag $GITHUB_REF_NAME does not match package.json version $version"
-            exit 1
-          fi
+      - name: Check the tag
+        id: tag
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const fs = await import('node:fs/promises');
+            const levels = await import(`${process.env.GITHUB_WORKSPACE}/scripts/release-levels.mjs`);
+            const tag = context.ref.replace('refs/tags/', '');
+
+            const packageJson = await fs.readFile('package.json', 'utf8');
+            const { version } = JSON.parse(packageJson);
+
+            if (`v${version}` !== tag) {
+              return core.setFailed(`Tag ${tag} does not match package.json version ${version}`);
+            }
+
+            // This tag's own level is in its message; a lightweight tag has none.
+            // Checked here, so a bad trailer fails the release before anything is built.
+            const added = [];
+            const { data: ref } = await github.rest.git.getRef(
+              { ...context.repo, ref: `tags/${tag}` }
+            );
+
+            if (ref.object.type === 'tag') {
+              const { data: annotated } = await github.rest.git.getTag(
+                { ...context.repo, tag_sha: ref.object.sha }
+              );
+              const trailers = levels.readTrailers(annotated.message);
+              const error = levels.levelError(trailers);
+
+              if (error) {
+                return core.setFailed(`Kumi-Update trailers: ${error}`);
+              }
+
+              if (trailers.level) {
+                added.push({ ...trailers, version, platforms: trailers.platforms?.split(',') });
+              }
+            }
+
+            // Carry forward what the previous release lists, so the newest release always holds every requirement.
+            const { data: list } = await github.rest.repos.listReleases(
+              { ...context.repo, per_page: 100 }
+            );
+
+            const releases = list.map((r) => ({
+              version: r.tag_name.replace(/^v/, ''),
+              draft: r.draft,
+              body: r.body,
+              tag: r.tag_name,
+            }));
+            
+            const previous = levels.previousRelease(releases, version);
+            const previousLines = levels.parseLevelLines(previous?.body);
+            const carried = levels.carryLevels(previousLines, added);
+            const lines = levels.formatLevelLines(carried);
+
+            core.info(`Carried from: ${previous?.tag ?? 'none'}`);
+            core.info(lines ? `Update levels:\n${lines}` : 'No update levels.');
+
+            core.setOutput('levels', lines);
 
   test:
     name: Test
@@ -60,7 +123,7 @@ jobs:
       # The variables are only exported when set, because electron-builder treats
       # an empty CSC_LINK as a certificate and fails.
       - name: Configure code signing
-        shell: bash
+        uses: actions/github-script@v9
         env:
           MAC_CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
           MAC_CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
@@ -69,46 +132,56 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
           WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
-        run: |
-          set_env() {
-            { echo "$1<<__KUMI_EOF__"; echo "$2"; echo "__KUMI_EOF__"; } >> "$GITHUB_ENV"
-          }
-          case "$RUNNER_OS" in
-            macOS)
-              if [ -z "$MAC_CSC_LINK" ]; then
-                # Ad-hoc sign instead: Apple silicon refuses to run code without a
-                # valid signature. Hardened runtime only matters for notarization,
-                # which an ad-hoc build can't get.
-                set_env MAC_ADHOC_SIGN true
-                echo "::warning::MAC_CSC_LINK is not set: the macOS build is ad-hoc signed and not notarized."
-                exit 0
-              fi
-              set_env CSC_LINK "$MAC_CSC_LINK"
-              set_env CSC_KEY_PASSWORD "$MAC_CSC_KEY_PASSWORD"
-              if [ -n "$APPLE_ID" ]; then
-                set_env APPLE_ID "$APPLE_ID"
-                set_env APPLE_APP_SPECIFIC_PASSWORD "$APPLE_APP_SPECIFIC_PASSWORD"
-                set_env APPLE_TEAM_ID "$APPLE_TEAM_ID"
-              else
-                echo "::warning::APPLE_ID is not set: the macOS build is signed but not notarized."
-              fi
-              ;;
-            Windows)
-              if [ -z "$WIN_CSC_LINK" ]; then
-                echo "::warning::WIN_CSC_LINK is not set: the Windows installer is unsigned."
-                exit 0
-              fi
-              set_env WIN_CSC_LINK "$WIN_CSC_LINK"
-              set_env WIN_CSC_KEY_PASSWORD "$WIN_CSC_KEY_PASSWORD"
-              ;;
-          esac
+        with:
+          script: |
+            const { 
+              RUNNER_OS, 
+              MAC_CSC_LINK, 
+              MAC_CSC_KEY_PASSWORD, 
+              APPLE_ID, 
+              APPLE_APP_SPECIFIC_PASSWORD, 
+              APPLE_TEAM_ID, 
+              WIN_CSC_LINK, 
+              WIN_CSC_KEY_PASSWORD 
+            } = process.env;
+
+            switch (RUNNER_OS) {
+              case 'macOS':
+                if (!MAC_CSC_LINK) {
+                  // Ad-hoc sign instead: Apple silicon refuses to run code without a valid signature.
+                  // Hardened runtime only matters for notarization, which an ad-hoc build can't get.
+                  core.exportVariable('MAC_ADHOC_SIGN', 'true');
+                  core.warning('MAC_CSC_LINK is not set: the macOS build is ad-hoc signed and not notarized.');
+                  return;
+                }
+                core.exportVariable('CSC_LINK', MAC_CSC_LINK);
+                core.exportVariable('CSC_KEY_PASSWORD', MAC_CSC_KEY_PASSWORD);
+                if (APPLE_ID) {
+                  core.exportVariable('APPLE_ID', APPLE_ID);
+                  core.exportVariable('APPLE_APP_SPECIFIC_PASSWORD', APPLE_APP_SPECIFIC_PASSWORD);
+                  core.exportVariable('APPLE_TEAM_ID', APPLE_TEAM_ID);
+                } else {
+                  core.warning('APPLE_ID is not set: the macOS build is signed but not notarized.');
+                }
+                break;
+              case 'Windows':
+                if (!WIN_CSC_LINK) {
+                  core.warning('WIN_CSC_LINK is not set: the Windows installer is unsigned.');
+                  return;
+                }
+                core.exportVariable('WIN_CSC_LINK', WIN_CSC_LINK);
+                core.exportVariable('WIN_CSC_KEY_PASSWORD', WIN_CSC_KEY_PASSWORD);
+                break;
+            }
 
       - run: npm run build
       # Publishing happens in the release job, once every platform has built.
       - name: Package
         shell: bash
+        env:
+          PLATFORM: ${{ matrix.platform }}
         run: |
-          args=(--${{ matrix.platform }} --publish never)
+          args=("--$PLATFORM" --publish never)
           if [ "${MAC_ADHOC_SIGN:-}" = true ]; then
             args+=(-c.mac.identity=- -c.mac.hardenedRuntime=false)
           fi
@@ -130,7 +203,7 @@ jobs:
 
   release:
     name: Publish GitHub release
-    needs: package
+    needs: [verify, package]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -142,21 +215,73 @@ jobs:
           merge-multiple: true
       - run: ls -l dist
       - name: Create release
+        uses: actions/github-script@v9
         env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          tag="$GITHUB_REF_NAME"
-          version="${tag#v}"
-          # A re-run after a partial failure updates the existing release instead of failing.
-          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
-            gh release upload "$tag" dist/* --repo "$GITHUB_REPOSITORY" --clobber
-            exit 0
-          fi
-          flags=()
-          if [[ "$version" == *-* ]]; then flags+=(--prerelease); fi
-          gh release create "$tag" dist/* \
-            --repo "$GITHUB_REPOSITORY" \
-            --title "Kumi $version" \
-            --generate-notes \
-            --verify-tag \
-            "${flags[@]}"
+          LEVELS: ${{ needs.verify.outputs.levels }}
+        with:
+          script: |
+            const fs = await import('node:fs/promises');
+            const tag = context.ref.replace('refs/tags/', '');
+            const version = tag.replace(/^v/, '');
+            const levels = process.env.LEVELS;
+            const repo = context.repo;
+
+            // A re-run after a partial failure finds the release the first run created (maybe still a draft).
+            const { data: releases } = await github.rest.repos.listReleases(
+              { ...repo, per_page: 30 }
+            );
+
+            let release = releases.find((r) => r.tag_name === tag);
+            const releaseBody = release?.body ?? '';
+
+            if (!release) {
+              // A draft until every file is up, so Kumi never sees a release with files missing.
+              // GitHub puts `body` above the generated notes.
+              ({ data: release } = await github.rest.repos.createRelease({
+                ...repo,
+                tag_name: tag,
+                name: `Kumi ${version}`,
+                body: levels || undefined,
+                generate_release_notes: true,
+                prerelease: version.includes('-'),
+                draft: true,
+              }));
+            } else if (levels && !releaseBody.includes(levels)) {
+              await github.rest.repos.updateRelease({
+                ...repo,
+                release_id: release.id,
+                body: `${levels}\n\n${releaseBody}`,
+              });
+            }
+
+            for (const name of await fs.readdir('dist')) {
+              const old = release.assets.find((a) => a.name === name);
+              if (old) {
+                await github.rest.repos.deleteReleaseAsset(
+                  { ...repo, asset_id: old.id }
+                );
+              }
+
+              core.info(`Uploading ${name}`);
+
+              const data = await fs.readFile(`dist/${name}`);
+
+              await github.rest.repos.uploadReleaseAsset({
+                ...repo,
+                release_id: release.id,
+                name,
+                data,
+                headers: { 
+                  'content-type': 'application/octet-stream', 
+                  'content-length': data.length 
+                },
+              });
+            }
+
+            if (release.draft) {
+              ({ data: release } = await github.rest.repos.updateRelease(
+                { ...repo, release_id: release.id, draft: false }
+              ));
+            }
+
+            core.info(`Published ${release.html_url}`);

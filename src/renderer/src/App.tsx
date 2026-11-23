@@ -5,7 +5,8 @@ import type { CatalogItem } from '@shared/registry';
 import { AppIcon } from './components/bits';
 import { InstallWizard, type WizardSource } from './components/InstallWizard';
 import { cx } from './components/ui';
-import { UpdateBanner } from './components/Updates';
+import { UpdateRequired } from './components/UpdateRequired';
+import { UpdateBanner, useUpdateStatus } from './components/Updates';
 import { api } from './lib/api';
 import { useInstalled } from './lib/hooks';
 import { dismissSplash } from './lib/splash';
@@ -41,6 +42,7 @@ export function App() {
   const [wizard, setWizard] = useState<WizardSource | null>(null);
   const installed = useInstalled();
   const settings = useQuery({ queryKey: ['settings'], queryFn: api.settingsGet });
+  const updates = useUpdateStatus();
   const serverCount = new Set(installed.data?.entries.map((e) => e.name)).size;
   const main = useRef<HTMLElement>(null);
 
@@ -50,14 +52,15 @@ export function App() {
   };
   const section = route.page === 'server' ? 'discover' : route.page;
 
-  // Both wait for startup, so together they mark when the app is ready to show.
-  const ready = !installed.isPending && !settings.isPending;
+  // All wait for startup, so together they mark when the app is ready to show.
+  const ready = !installed.isPending && !settings.isPending && !updates.isPending;
   useEffect(() => {
     if (ready) dismissSplash();
   }, [ready]);
 
   // The splash covers the window until settings load. If they can't, show the app rather than block it.
   if (!ready) return null;
+  if (updates.data?.urgency?.level === 'required') return <UpdateRequired status={updates.data} />;
   if (settings.data && !settings.data.setupDone) return <Welcome />;
 
   return (

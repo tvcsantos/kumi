@@ -3,6 +3,7 @@
 import { z } from 'zod';
 import type { ReleaseInfo, UpdateChannel } from '@shared/api';
 import { networkReason, type Fetch } from '../catalog/http';
+import { markersIn, type ReleasePlatform, type UpdateMarker } from './levels';
 import { compareVersions, parseVersion } from './version';
 
 export const RELEASES_URL = 'https://api.github.com/repos/tvcsantos/kumi/releases?per_page=20';
@@ -42,13 +43,27 @@ const release = z.object({
   draft: z.boolean(),
   prerelease: z.boolean(),
   published_at: z.string().nullish(),
+  body: z.string().nullish(),
 });
 
+export interface ReleaseCheck {
+  /** The newest release on the channel, or null when there is none. */
+  latest: ReleaseInfo | null;
+  /** Important and required updates the releases on the channel list for this platform. */
+  markers: UpdateMarker[];
+}
+
 /**
- * The newest release on the channel, or null when there is none.
+ * The newest release on the channel, and the marked ones.
  * `stable` skips pre-releases; drafts and tags that aren't versions are always skipped.
  */
-export async function latestRelease(fetchImpl: Fetch, channel: UpdateChannel, userAgent: string, url = RELEASES_URL): Promise<ReleaseInfo | null> {
+export async function checkReleases(
+  fetchImpl: Fetch,
+  channel: UpdateChannel,
+  platform: ReleasePlatform,
+  userAgent: string,
+  url = RELEASES_URL,
+): Promise<ReleaseCheck> {
   let res: Response;
   try {
     res = await fetchImpl(url, {
@@ -67,22 +82,25 @@ export async function latestRelease(fetchImpl: Fetch, channel: UpdateChannel, us
 
   const list = z.array(z.unknown()).parse(await res.json());
   let best: { info: ReleaseInfo; version: NonNullable<ReturnType<typeof parseVersion>> } | null = null;
+  const seen: { info: ReleaseInfo; body?: string | null }[] = [];
   for (const item of list) {
     const r = release.safeParse(item);
     if (!r.success || r.data.draft || (r.data.prerelease && channel === 'stable')) continue;
     const version = parseVersion(r.data.tag_name);
     if (!version) continue;
-    if (best && compareVersions(version, best.version) <= 0) continue;
-    best = {
-      version,
-      info: {
-        version: r.data.tag_name.replace(/^v/, ''),
-        url: r.data.html_url,
-        name: r.data.name ?? undefined,
-        publishedAt: r.data.published_at ?? undefined,
-        prerelease: r.data.prerelease,
-      },
+    const info: ReleaseInfo = {
+      version: r.data.tag_name.replace(/^v/, ''),
+      url: r.data.html_url,
+      name: r.data.name ?? undefined,
+      publishedAt: r.data.published_at ?? undefined,
+      prerelease: r.data.prerelease,
     };
+    seen.push({ info, body: r.data.body });
+    if (!best || compareVersions(version, best.version) > 0) best = { version, info };
   }
-  return best?.info ?? null;
+  // Each release carries every requirement still in force, so the newest alone would do; reading
+  // them all also picks up a line added by hand to an older release.
+  const urls = new Map(seen.map((s) => [s.info.version, s.info.url]));
+  const markers = seen.flatMap((s) => markersIn(s.body, platform, (v) => urls.get(v) ?? s.info.url));
+  return { latest: best?.info ?? null, markers };
 }

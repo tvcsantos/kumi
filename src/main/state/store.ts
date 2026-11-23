@@ -3,12 +3,15 @@
 import { join } from 'node:path';
 import type { ClientId, InstallRecord, ScopeRef } from '@shared/types';
 import { atomicWrite, readTextOrNull } from '../config-io/fs';
+import type { UpdateMarker } from '../updater/levels';
 
 interface StateFile {
   version: 1;
   records: InstallRecord[];
   /** Project folders the user has worked with, scanned for project-scoped configs. */
   projects: string[];
+  /** Releases marked important or required, so they apply from startup, offline included. */
+  updateMarkers: UpdateMarker[];
 }
 
 export function recordKey(r: { clientId: ClientId; configPath: string; scope: ScopeRef; name: string }): string {
@@ -16,7 +19,7 @@ export function recordKey(r: { clientId: ClientId; configPath: string; scope: Sc
 }
 
 export class StateStore {
-  private state: StateFile = { version: 1, records: [], projects: [] };
+  private state: StateFile = { version: 1, records: [], projects: [], updateMarkers: [] };
   private readonly path: string;
   private loaded = false;
 
@@ -29,7 +32,7 @@ export class StateStore {
       const text = await readTextOrNull(this.path);
       if (text) {
         const parsed = JSON.parse(text) as Partial<StateFile>;
-        this.state = { version: 1, records: parsed.records ?? [], projects: parsed.projects ?? [] };
+        this.state = { version: 1, records: parsed.records ?? [], projects: parsed.projects ?? [], updateMarkers: parsed.updateMarkers ?? [] };
       }
       this.loaded = true;
     }
@@ -76,6 +79,15 @@ export class StateStore {
       state.projects.push(dir);
       await this.save();
     }
+  }
+
+  async updateMarkers(): Promise<UpdateMarker[]> {
+    return [...(await this.load()).updateMarkers];
+  }
+
+  async setUpdateMarkers(markers: UpdateMarker[]): Promise<void> {
+    (await this.load()).updateMarkers = markers;
+    await this.save();
   }
 
   async removeProject(dir: string): Promise<void> {
