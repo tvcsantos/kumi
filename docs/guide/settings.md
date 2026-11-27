@@ -13,7 +13,7 @@ Where Kumi looks for MCP servers. Discover searches every registry that's turned
 
 ## Private networks
 
-Hosts that are only reachable on a VPN or office network. A server whose host matches gets a **private network** badge, a note in the install wizard, and a specific hint when a test can't reach it. See [Servers on a private network](./test-connection#servers-on-a-private-network).
+Hosts that are only reachable on a VPN or office network. A server whose host matches gets a **private network** badge, a note in the install wizard, and a specific hint when a test can't reach it. A [private package registry](./test-connection#packages-from-a-private-registry) whose host matches gets the VPN's name in its badge and messages. See [Servers on a private network](./test-connection#servers-on-a-private-network).
 
 - **Include names and ranges that can only be private**: on by default. Names without a dot (`http://mcp:8080`, but not `localhost`), `*.internal`, `*.local`, `*.home.arpa`, and the private IP ranges `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `100.64.0.0/10` and `fc00::/7`.
 - **Your patterns**: a host (`mcp.acme.com`), every host under a domain (`*.acme.com`, which doesn't match `acme.com` itself), or an IP address or range (`10.42.0.0/16`, `fd12::/16`). Each can have a **VPN name**, used in messages: "connect to Acme GlobalProtect". Your patterns are checked before the built-in ones.

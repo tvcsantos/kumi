@@ -247,7 +247,18 @@ Apps connect to servers, not Kumi, so a server that only answers on a VPN instal
 2. **Settings → Private networks.** Host patterns (`*.acme.com`, `mcp`) and IP ranges (`10.42.0.0/16`), each with an optional VPN label. Built-in patterns are only the certain ones (single-label names, `*.internal`, `*.local`, `*.home.arpa`, RFC 1918, `100.64.0.0/10`, `fc00::/7`) and can be switched off. IP ranges match an IP in the URL, or the address the name resolves to after a timeout.
 3. **Registry flag.** `pt.com.santos.tiago/kumi: { "private": true, "vpn"?: "…" }` means the server only works on a private network, however it runs (remote, or a package that calls an internal API). Read from the server's `_meta["io.modelcontextprotocol.registry/publisher-provided"]` (the publisher's; the only place the official registry keeps; it refuses other `_meta` keys with a 422) and from the response-level `_meta` (the registry operator's; static files and other registry software). Either marks it private; the operator's `vpn` label wins. A server mixing public and private forms is published as two servers.
 
-A server is private when its registry flags it or a remote's host matches a pattern. That shows as a badge on Discover, the detail page and Installed, a note in the install wizard, and a specific hint when a test fails (for packages, where Kumi can't see the cause, a "may be why" hint). Not covered: system proxies and PAC files, and packages from private package registries.
+A server is private when its registry flags it or a remote's host matches a pattern. That shows as a badge on Discover, the detail page and Installed, a note in the install wizard, and a specific hint when a test fails (for packages, where Kumi can't see the cause, a "may be why" hint). Not covered: system proxies and PAC files.
+
+### Private package registries
+
+A package can come from a registry only reachable inside a company (Artifactory, Nexus, Verdaccio, a private PyPI index, an internal container registry). The official registry only accepts public package registries, so these servers come from Kumi's own sources: a static file or a self-hosted registry.
+
+1. **Launch command.** When `registryBaseUrl` isn't a public registry (npmjs, PyPI, nuget.org), Kumi always writes the registry into the config, so a project-scope config shared through git works for teammates: npm scoped `--@scope:registry=URL` (only that scope), npm unscoped `--registry=URL` (the whole run, so the registry must mirror npmjs), pypi `uvx --index URL` (PyPI stays for dependencies), nuget `dnx --add-source URL`. OCI images name their registry in the identifier; a bare identifier with a private `registryBaseUrl` gets the host prefixed. With a non-default `runtimeHint` (bunx, pnpm dlx), Kumi adds nothing and warns.
+2. **Sign-in stays with each tool**: `.npmrc`, `~/.netrc` for uv, `NuGet.Config`, `docker login`. Kumi never writes registry credentials; a `registryBaseUrl` with `user:token@` is used without them, with a warning. The install wizard shows how to sign in.
+3. **Badge.** *private registry*, separate from *private network*: the download needs the registry, but the server may run off the VPN once it's cached. The registry host is matched against Settings → Private networks for the VPN label. Shown on Discover, the detail page (per variant), Installed (read from the config's flags, so it works for servers Kumi didn't install) and the install wizard.
+4. **Test.** Download failures are read from the package manager's output (npm, uv, docker, dnx): *unreachable* (amber, VPN hint), *sign-in needed* (`401`, `403`, and a `404` for the package itself on a private registry, which is what most answer when you're not signed in), *doesn't mirror npmjs* (the package was found but a dependency `404`s on the private registry), *certificate* (points to the OS certificate trust). This works for public registries too, minus the sign-in advice.
+
+Not covered: mirror or proxy settings, editing `.npmrc` and other tool config, `mcpb` packages, a default registry for a whole source.
 
 ---
 
@@ -346,6 +357,7 @@ kumi/
 - [x] Docs site (VitePress on GitHub Pages).
 - [x] Log file; OS certificate trust.
 - [ ] Private networks (§8): failure causes, Settings patterns, registry `private` flag.
+- [ ] Private package registries (§8): registry flags in commands, badge, download failures in Test.
 - [ ] Warn when Claude Code is running; watch config files for external changes.
 - [ ] Code signing, notarization.
 - [ ] App updates: see [§16](#16-app-updates) (in-app on all platforms done; Homebrew tap bump left).

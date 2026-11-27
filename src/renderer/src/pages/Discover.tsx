@@ -2,9 +2,10 @@ import { useInfiniteQuery, useQueries } from '@tanstack/react-query';
 import { Library, Search, Sparkles, TriangleAlert, WifiOff } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { FEATURED } from '@shared/featured';
+import { registryOfPackage } from '@shared/package-registry';
 import { privateNetworkFor, registryPrivateNetwork } from '@shared/private-network';
 import { OFFICIAL_REGISTRY_ID, type CatalogItem, type RegistryInfo } from '@shared/registry';
-import { ClientMark, displayName, PrivateNetworkBadge, ServerIcon } from '../components/bits';
+import { ClientMark, displayName, PrivateNetworkBadge, PrivateRegistryBadge, ServerIcon } from '../components/bits';
 import { Badge, Button, Callout, cx, Empty, Input, PageHeader, Spinner } from '../components/ui';
 import { api, errorMessage } from '../lib/api';
 import { useInstalledByServer, useRegistries, useSettings } from '../lib/hooks';
@@ -28,6 +29,7 @@ function ServerCard({ item, onOpen, category, registry }: { item: CatalogItem; o
   const hosted = !!server.remotes?.length;
   const settings = useSettings();
   const privateNetwork = privateNetworkFor(registryPrivateNetwork(server), server.remotes?.map((r) => r.url) ?? [], settings.data);
+  const privateRegistry = server.packages?.map((p) => registryOfPackage(p).registry).find(Boolean);
   return (
     <button
       type="button"
@@ -52,6 +54,7 @@ function ServerCard({ item, onOpen, category, registry }: { item: CatalogItem; o
         {local && <Badge>local</Badge>}
         {hosted && <Badge>hosted</Badge>}
         <PrivateNetworkBadge network={privateNetwork} />
+        <PrivateRegistryBadge registry={privateRegistry} />
         <Badge>v{server.version}</Badge>
         {installed.length > 0 && (
           <span className="ml-auto flex -space-x-1">

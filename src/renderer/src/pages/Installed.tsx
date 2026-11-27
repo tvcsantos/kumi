@@ -2,8 +2,9 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, ChevronDown, ChevronRight, FileCode, FolderPlus, Layers, Pencil, PlugZap, Plus, RefreshCw, Trash2, X } from 'lucide-react';
 import { useState } from 'react';
 import type { HealthResult, InstalledEntry, InstallTarget, ServerSpec } from '@shared/types';
+import { registryOfSpec } from '@shared/package-registry';
 import { privateNetworkFor } from '@shared/private-network';
-import { ClientMark, PrivateNetworkBadge, scopeLabel } from '../components/bits';
+import { ClientMark, PrivateNetworkBadge, PrivateRegistryBadge, scopeLabel } from '../components/bits';
 import { HealthPanel, testingLabel, type WizardSource } from '../components/InstallWizard';
 import { Badge, Button, Callout, Empty, PageHeader, Spinner } from '../components/ui';
 import { api, errorMessage } from '../lib/api';
@@ -43,6 +44,7 @@ function GroupRow({ group, onEdit }: { group: Group; onEdit: (source: WizardSour
   const fromRegistry = source && source.registryId !== OFFICIAL_REGISTRY_ID ? registries.data?.find((r) => r.id === source.registryId) : undefined;
   const settings = useSettings();
   const privateNetwork = privateNetworkFor(source?.privateNetwork, group.entries.map((e) => e.spec.url), settings.data);
+  const privateRegistry = group.entries.map((e) => registryOfSpec(e.spec)).find(Boolean);
 
   const refresh = () => {
     void queryClient.invalidateQueries({ queryKey: ['installed'] });
@@ -94,6 +96,7 @@ function GroupRow({ group, onEdit }: { group: Group; onEdit: (source: WizardSour
               <span className="font-mono font-semibold">{group.name}</span>
               {managed.length === 0 ? <Badge>added manually</Badge> : managed.length < group.entries.length ? <Badge tone="warn">partly managed</Badge> : null}
               <PrivateNetworkBadge network={privateNetwork} />
+              <PrivateRegistryBadge registry={privateRegistry} />
             </div>
             <div className="truncate font-mono text-[11px] text-muted">
               {source?.registryName ?? describeSpec(rep.spec)}

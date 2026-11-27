@@ -3,7 +3,7 @@ import { ArrowLeft, Code2, Download, ExternalLink, KeyRound, Library, Lock } fro
 import { privateNetworkFor, registryPrivateNetwork } from '@shared/private-network';
 import type { CatalogItem, RegistryServer } from '@shared/registry';
 import { getVariants } from '@shared/variants';
-import { ClientMark, displayName, PrivateNetworkBadge, scopeLabel, ServerIcon } from '../components/bits';
+import { ClientMark, displayName, PrivateNetworkBadge, PrivateRegistryBadge, scopeLabel, ServerIcon } from '../components/bits';
 import { Badge, Button, Callout, Spinner } from '../components/ui';
 import { api, errorMessage } from '../lib/api';
 import { useInstalledByServer, useRegistry, useSettings } from '../lib/hooks';
@@ -91,6 +91,7 @@ export function ServerDetail({ initial, onBack, onInstall }: { initial: CatalogI
                 <Badge>{v.transport}</Badge>
                 {v.runtime && <Badge>needs {v.runtime}</Badge>}
                 {v.ref.kind === 'remote' && !flag && <PrivateNetworkBadge network={privateNetworkFor(undefined, [server.remotes?.[v.ref.index]?.url], settings.data)} />}
+                <PrivateRegistryBadge registry={v.privateRegistry} />
                 {v.unsupported && <Badge tone="warn">not supported</Badge>}
               </div>
               {v.unsupported ? (

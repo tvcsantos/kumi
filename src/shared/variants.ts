@@ -10,6 +10,7 @@ import type {
   RegistryRemote,
   RegistryServer,
 } from './registry';
+import { canPassRegistry, imageRef, registryArgs, registryOfPackage } from './package-registry';
 import type { ServerSpec, Transport } from './types';
 
 export type FormValues = Record<string, string>;
@@ -119,24 +120,35 @@ interface PackageRuntime {
   command: string;
   ref: string;
   defaultRuntimeArgs: string[];
+  /** Points the tool at a private registry; right before the package reference. */
+  registryArgs: string[];
   trailingArgs: string[];
 }
 
 function packageRuntime(pkg: RegistryPackage): PackageRuntime | null {
+  const runtime = baseRuntime(pkg);
+  if (!runtime) return null;
+  const { registry } = registryOfPackage(pkg);
+  if (!registry || !canPassRegistry(pkg)) return runtime;
+  return { ...runtime, ref: imageRef(runtime.ref, registry), registryArgs: registryArgs(registry) };
+}
+
+function baseRuntime(pkg: RegistryPackage): PackageRuntime | null {
   const { identifier: id, version } = pkg;
+  const registryArgs: string[] = [];
   switch (pkg.registryType) {
     case 'npm': {
       const command = pkg.runtimeHint ?? 'npx';
-      return { command, ref: version ? `${id}@${version}` : id, defaultRuntimeArgs: command === 'npx' ? ['-y'] : [], trailingArgs: [] };
+      return { command, ref: version ? `${id}@${version}` : id, defaultRuntimeArgs: command === 'npx' ? ['-y'] : [], registryArgs, trailingArgs: [] };
     }
     case 'pypi':
-      return { command: pkg.runtimeHint ?? 'uvx', ref: version ? `${id}@${version}` : id, defaultRuntimeArgs: [], trailingArgs: [] };
+      return { command: pkg.runtimeHint ?? 'uvx', ref: version ? `${id}@${version}` : id, defaultRuntimeArgs: [], registryArgs, trailingArgs: [] };
     case 'oci': {
       const hasTag = /:[^/]+$/.test(id) || id.includes('@sha256:');
-      return { command: pkg.runtimeHint ?? 'docker', ref: version && !hasTag ? `${id}:${version}` : id, defaultRuntimeArgs: [], trailingArgs: [] };
+      return { command: pkg.runtimeHint ?? 'docker', ref: version && !hasTag ? `${id}:${version}` : id, defaultRuntimeArgs: [], registryArgs, trailingArgs: [] };
     }
     case 'nuget':
-      return { command: pkg.runtimeHint ?? 'dnx', ref: version ? `${id}@${version}` : id, defaultRuntimeArgs: [], trailingArgs: ['--yes'] };
+      return { command: pkg.runtimeHint ?? 'dnx', ref: version ? `${id}@${version}` : id, defaultRuntimeArgs: [], registryArgs, trailingArgs: ['--yes'] };
     default:
       return null;
   }
@@ -146,10 +158,19 @@ function packageVariant(pkg: RegistryPackage, index: number): InstallVariant {
   const transport = (pkg.transport?.type ?? 'stdio') as Transport;
   const runtime = packageRuntime(pkg);
   const label = `${pkg.registryType} · ${pkg.identifier}${pkg.version && pkg.registryType !== 'oci' ? `@${pkg.version}` : ''}`;
-  const base = { ref: { kind: 'package', index } as const, label, transport, runtime: runtime?.command };
+  const { registry, warning, error } = registryOfPackage(pkg);
+  const base = {
+    ref: { kind: 'package', index } as const,
+    label,
+    transport,
+    runtime: runtime?.command,
+    ...(registry ? { privateRegistry: registry } : {}),
+    ...(warning ? { warning } : {}),
+  };
   if (!runtime) {
     return { ...base, transport: 'stdio', fields: [], unsupported: `"${pkg.registryType}" packages are not supported yet.` };
   }
+  if (error) return { ...base, fields: [], unsupported: error };
   if (transport !== 'stdio') {
     return {
       ...base,
@@ -259,7 +280,7 @@ function resolvePackage(pkg: RegistryPackage, index: number, name: string, value
   }
   const rt = pkg.runtimeArguments?.length ? runtimeArgs : { args: runtime.defaultRuntimeArgs, secretIndexes: [], missing: [] };
   secretArgs.push(...rt.secretIndexes.map((i) => i + args.length));
-  args.push(...rt.args, runtime.ref);
+  args.push(...rt.args, ...runtime.registryArgs, runtime.ref);
   const pk = resolveArgs(pkg.packageArguments, 'pkg', values, args.length);
   secretArgs.push(...pk.secretIndexes);
   args.push(...pk.args, ...runtime.trailingArgs);

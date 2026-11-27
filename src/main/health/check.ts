@@ -9,8 +9,10 @@ import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
 import { hostOf, matchHost, type PrivateNetwork, type PrivateNetworkSettings } from '@shared/private-network';
-import type { HealthResult, HealthTestOptions, ServerSpec } from '@shared/types';
+import type { DownloadFailure, HealthResult, HealthTestOptions, ServerSpec } from '@shared/types';
+import { registryOfSpec } from '@shared/package-registry';
 import { log } from '../log';
+import { describeDownload, downloadFailure } from './download';
 import { causeOf, codedError, describeCause, errorCode, isUnreachable, probe, resolveAddress, type NetworkCause } from './network';
 import { OAuthSession, type OpenBrowser } from './oauth';
 
@@ -144,11 +146,26 @@ async function diagnose(spec: ServerSpec, e: unknown): Promise<{ cause?: Network
   return { cause };
 }
 
-/** The registry's flag, or the host matched against the Private networks settings. */
-function privateNetworkOf(spec: ServerSpec, opts: TestOptions, address?: string): PrivateNetwork | undefined {
+/**
+ * The registry's flag, or the host matched against the Private networks settings: the remote server's host, or for
+ * a package, the host it couldn't be downloaded from.
+ */
+function privateNetworkOf(spec: ServerSpec, opts: TestOptions, address?: string, downloadHost?: string): PrivateNetwork | undefined {
   if (opts.privateNetwork) return { source: 'registry', ...(opts.privateNetwork.vpn ? { vpn: opts.privateNetwork.vpn } : {}) };
-  const host = spec.transport === 'stdio' ? undefined : hostOf(spec.url);
+  const host = spec.transport === 'stdio' ? downloadHost?.replace(/:\d+$/, '') : hostOf(spec.url);
   return host && opts.networks ? matchHost(host, opts.networks, address) : undefined;
+}
+
+/**
+ * A package that timed out may still be waiting on its registry (npm retries for a while). When the command names a
+ * private registry, check it answers: if not, that's the likely cause.
+ */
+async function probeRegistry(spec: ServerSpec): Promise<{ download?: DownloadFailure; address?: string }> {
+  const registry = registryOfSpec(spec);
+  if (!registry) return {};
+  const found = await probe(new URL(registry.url)).catch(() => ({}) as { cause?: undefined; address?: undefined });
+  if (!found.cause) return {};
+  return { download: { cause: 'network', network: found.cause, host: registry.host, registry, inferred: true }, address: found.address };
 }
 
 export async function testServer(spec: ServerSpec, opts: TestOptions = {}): Promise<HealthResult> {
@@ -220,8 +237,20 @@ export async function testServer(spec: ServerSpec, opts: TestOptions = {}): Prom
       if (words) message = words;
       if (isUnreachable(found.cause)) unreachable = { cause: found.cause, host };
     }
-    const privateNetwork = privateNetworkOf(spec, opts, address);
-    const error = hint(message, fullStderr);
+    // A package that couldn't be downloaded: say why, from the package manager's output.
+    let download = downloadFailure(spec, fullStderr);
+    if (!download && spec.transport === 'stdio' && /^Timed out after/.test(message)) {
+      const probed = await probeRegistry(spec);
+      download = probed.download;
+      address = probed.address;
+    }
+    if (download) {
+      message = describeDownload(download, spec, message);
+      if (download.cause === 'network' && isUnreachable(download.network) && download.host) unreachable = { cause: download.network, host: download.host };
+    }
+    const privateNetwork = privateNetworkOf(spec, opts, address, download?.host);
+    // The download's own words already say what to do; the generic hints would misread a registry's 401.
+    const error = download ? message : hint(message, fullStderr);
     const durationMs = Date.now() - started;
     const stack = e instanceof Error && e.stack ? `\n${e.stack}` : '';
     await log(
@@ -238,6 +267,7 @@ export async function testServer(spec: ServerSpec, opts: TestOptions = {}): Prom
       durationMs,
       ...(unreachable ? { unreachable } : {}),
       ...(privateNetwork ? { privateNetwork } : {}),
+      ...(download ? { download } : {}),
     };
   } finally {
     oauth?.close();

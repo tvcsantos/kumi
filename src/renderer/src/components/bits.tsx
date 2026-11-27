@@ -1,11 +1,12 @@
-import { Network, Package } from 'lucide-react';
+import { Boxes, Network, Package } from 'lucide-react';
 import { useState } from 'react';
-import type { PrivateNetwork } from '@shared/private-network';
+import type { PackageRegistry } from '@shared/package-registry';
+import { matchHost, type PrivateNetwork } from '@shared/private-network';
 import type { RegistryServer } from '@shared/registry';
 import type { ClientId, DiffLine, ScopeRef } from '@shared/types';
 import iconDark from '../../../../build/icon-dark.svg';
 import iconLight from '../../../../build/icon-light.svg';
-import { useDarkMode } from '../lib/hooks';
+import { useDarkMode, useSettings } from '../lib/hooks';
 import { Badge, cx } from './ui';
 
 const CLIENT_STYLE: Record<ClientId, { short: string; color: string }> = {
@@ -114,6 +115,31 @@ export function privateNetworkTitle(p: PrivateNetwork): string {
   const where = p.vpn ?? 'a private network';
   if (p.source === 'registry') return `Only reachable on ${where}, according to its registry.`;
   return `Only reachable on ${where}${privateNetworkDetail(p)}.`;
+}
+
+/** The VPN a private registry needs, from the Private networks patterns (its host without the port). */
+export function useRegistryNetwork(registry: PackageRegistry | undefined): PrivateNetwork | undefined {
+  const settings = useSettings();
+  if (!registry || !settings.data) return undefined;
+  return matchHost(registry.host.replace(/:\d+$/, ''), settings.data);
+}
+
+/** "Downloads from npm.acme.com (@acme packages), a private registry." with the VPN when a pattern names one. */
+export function privateRegistryTitle(r: PackageRegistry, network: PrivateNetwork | undefined): string {
+  const scope = r.scope ? ` (${r.scope} packages)` : '';
+  if (!network) return `Downloads from ${r.host}${scope}, a private registry. You may need to sign in to it.`;
+  const vpn = network.vpn ?? 'a private network';
+  return `Downloads from ${r.host}${scope}, a private registry on ${vpn}${privateNetworkDetail(network)}. Once downloaded, the server may run without ${network.vpn ? 'it' : 'that network'}.`;
+}
+
+export function PrivateRegistryBadge({ registry }: { registry: PackageRegistry | undefined }) {
+  const network = useRegistryNetwork(registry);
+  if (!registry) return null;
+  return (
+    <Badge tone="accent" title={privateRegistryTitle(registry, network)}>
+      <Boxes className="size-3" /> private registry
+    </Badge>
+  );
 }
 
 export function PrivateNetworkBadge({ network }: { network: PrivateNetwork | undefined }) {

@@ -1,5 +1,6 @@
 // Domain types shared by the main process and the renderer.
 
+import type { PackageRegistry } from './package-registry';
 import type { PrivateNetwork } from './private-network';
 
 export const CLIENT_IDS = ['claude-desktop', 'claude-code', 'vscode', 'cursor', 'codex', 'copilot-cli', 'opencode', 'pi', 'junie', 'jetbrains-air', 'zed'] as const;
@@ -182,8 +183,29 @@ export interface HealthResult {
   unreachable?: { cause: 'dns' | 'timeout' | 'route'; host: string };
   /** Set on failure when Kumi knows the server is on a private network: its registry says so, or its host matches a pattern. */
   privateNetwork?: PrivateNetwork;
+  /** Set when a package couldn't be downloaded, from the package manager's output. */
+  download?: DownloadFailure;
   stderr?: string;
   durationMs: number;
+}
+
+/** Why a package couldn't be downloaded. */
+export interface DownloadFailure {
+  /**
+   * `network`: the registry couldn't be reached. `sign-in`: it wants credentials. `not-found`: no such package (or,
+   * on a private registry, not without signing in). `no-mirror`: a private npm registry lacks a public dependency.
+   * `tls`: its certificate isn't trusted.
+   */
+  cause: 'network' | 'sign-in' | 'not-found' | 'no-mirror' | 'tls';
+  network?: 'dns' | 'timeout' | 'route' | 'refused' | 'reset' | 'tls';
+  /** The registry host that failed, when known. */
+  host?: string;
+  /** The dependency that wasn't found, when it wasn't the package itself. */
+  dependency?: string;
+  /** The private registry on the command line, when there is one. */
+  registry?: PackageRegistry;
+  /** The test timed out and Kumi found the registry unreachable itself, so this is the likely cause rather than a reported one. */
+  inferred?: boolean;
 }
 
 export interface HealthTestOptions {

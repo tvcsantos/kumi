@@ -59,6 +59,26 @@ Such servers also show a **private network** badge on Discover, the server page 
 
 For a **local** server, the connection to the private service happens inside the server, so Kumi can't see why it failed. If the registry flags the server as private, the failure adds: *This server only works on Acme GlobalProtect. If you're not connected, that may be why.* The same note is added to other failures of a private remote server, for example when a company gateway answers `403` because you're not on the network.
 
+## Packages from a private registry
+
+A package can come from a company registry: npm, PyPI, NuGet or a container registry that only answers inside the company, or only to people who signed in. The registry is written into the command (see [Packages from a private registry](../reference/registry-format#packages-from-a-private-registry)), and the package shows a **private registry** badge on Discover, the server page and Installed, with the VPN's name when the registry's host matches one of your [Private networks](./settings#private-networks). Installed reads the registry from the app's config, so servers added by hand get the badge too.
+
+Only the download needs the registry. Once a pinned version is downloaded, the server may keep working when you're off the VPN.
+
+When the download fails, Kumi reads why from npm, uv, Docker or dnx, and says **Couldn't download the package**:
+
+| Message | What to do |
+|---|---|
+| *Couldn't download the package from npm.acme.com: the name doesn't resolve* | Shown as **Not reachable from this network**. Connect to your VPN and test again. |
+| *npm.acme.com wants you to sign in before it lets you download the package* | Run the sign-in command Kumi shows (for example `npm login --registry=https://npm.acme.com/ --scope=@acme`, or `docker login registry.acme.com`). For uv, add the registry to `~/.netrc`. |
+| *npm.acme.com has no such package, or won't show it until you sign in* | Most private registries answer "not found" when you aren't signed in. Sign in, then check the name and version. |
+| *npm.acme.com has the package but not its dependency …: the registry doesn't mirror npmjs.org* | An unscoped npm package sends every download to the private registry. Ask its admins to proxy npmjs.org, or publish the package under a scope. |
+| *Couldn't verify the certificate of npm.acme.com* | Your company uses its own certificate authority. Point `NODE_EXTRA_CA_CERTS` (npm) or `SSL_CERT_FILE` (uv) at it, or add it to Docker's trusted certificates. |
+
+npm keeps retrying an unreachable registry for a while, so the test may time out first. Kumi then checks the registry itself, and adds *The package is downloaded from npm.acme.com, which isn't reachable from here* when it doesn't answer.
+
+The same messages show for public registries, without the sign-in command: a `401` from npmjs.org usually means an old token in your `.npmrc`.
+
 ## Timeouts
 
 The first run of an `npx`, `uvx` or `docker` server may download the package or image, so Kumi waits up to 90 seconds for its handshake. A remote server has nothing to download, so Kumi waits up to 15 seconds. Then it waits up to 30 seconds for the tool list.

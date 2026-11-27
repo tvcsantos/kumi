@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, Check, CheckCircle2, FileText, FolderOpen, LogIn, Network, PlugZap, RotateCcw, WifiOff, XCircle } from 'lucide-react';
+import { AlertTriangle, Boxes, Check, CheckCircle2, FileText, FolderOpen, LogIn, Network, PlugZap, RotateCcw, WifiOff, XCircle } from 'lucide-react';
 import { useMemo, useState } from 'react';
+import { canPassRegistry, loginAdvice, loginCommand, type PackageRegistry } from '@shared/package-registry';
 import { privateNetworkFor, registryPrivateNetwork, type PrivateNetwork } from '@shared/private-network';
 import type { RegistryServer } from '@shared/registry';
 import type {
@@ -18,7 +19,7 @@ import type {
 import { defaultVariant, getVariants, initialValues, resolveVariant, suggestName, validateValues, type FormValues } from '@shared/variants';
 import { api, errorMessage } from '../lib/api';
 import { useSettings } from '../lib/hooks';
-import { ClientMark, DiffView, displayName, privateNetworkDetail, scopeLabel, ServerIcon } from './bits';
+import { ClientMark, DiffView, displayName, privateNetworkDetail, scopeLabel, ServerIcon, useRegistryNetwork } from './bits';
 import { CustomServerForm, customFormFromSpec, specFromCustomForm, type CustomForm } from './CustomServerForm';
 import { FieldInput } from './FieldInput';
 import { Badge, Button, Callout, Input, Modal, Spinner, cx } from './ui';
@@ -137,22 +138,74 @@ function unreachableAdvice(host: string, network: PrivateNetwork | undefined): s
   return `${host} is on a private network${privateNetworkDetail(network)}: connect to ${network.vpn ?? 'your VPN'} and test again. Your apps can use it once you're connected.`;
 }
 
+/** Same, for the registry a package is downloaded from: once downloaded, the package may run without the VPN. */
+function registryUnreachableAdvice(host: string, network: PrivateNetwork | undefined): string {
+  if (!network) return 'If this is a company registry on a VPN or private network, connect and test again.';
+  return `${host} is on a private network${privateNetworkDetail(network)}: connect to ${network.vpn ?? 'your VPN'} and test again. Once the package is downloaded, your apps may run it without the VPN.`;
+}
+
+/** How to sign in to a private registry: the tool's own command, or where its credentials go. */
+function LoginHint({ registry, lead = 'Sign in once, then test again:' }: { registry: PackageRegistry; lead?: string }) {
+  const cmd = loginCommand(registry);
+  if (!cmd) return <div className="mt-1">{loginAdvice(registry)}</div>;
+  return (
+    <div className="mt-1">
+      {lead}
+      <pre className="mt-1 overflow-x-auto rounded bg-black/5 px-2 py-1 font-mono text-[12px] whitespace-pre-wrap select-all dark:bg-white/10">{cmd}</pre>
+    </div>
+  );
+}
+
+/**
+ * Downloads from a private registry: what that means, and how to sign in. `passed` is false when the package runs
+ * with a tool Kumi can't hand the registry to; the variant's warning then says so.
+ */
+function PrivateRegistryNote({ registry, passed }: { registry: PackageRegistry; passed: boolean }) {
+  const network = useRegistryNetwork(registry);
+  const where = (
+    <>
+      Downloads from {registry.host}
+      {registry.scope ? ` (${registry.scope} packages)` : ''}, a private registry
+      {network ? ` on ${network.vpn ?? 'a private network'}${privateNetworkDetail(network)}` : ''}.
+    </>
+  );
+  if (!passed) {
+    return (
+      <Callout tone="accent" icon={<Boxes className="size-4" />}>
+        {where}
+      </Callout>
+    );
+  }
+  return (
+    <Callout tone="accent" icon={<Boxes className="size-4" />}>
+      {where} Kumi adds it to the command, so every app downloads from there; signing in to it stays with{' '}
+      {registry.type === 'oci' ? 'Docker' : registry.type === 'pypi' ? 'uv' : registry.type === 'nuget' ? 'NuGet' : 'npm'}.
+      {registry.type === 'npm' && !registry.scope && ' The whole download goes through it, so it must also mirror npmjs.org.'}
+      <LoginHint registry={registry} lead="If you haven't signed in to it yet:" />
+    </Callout>
+  );
+}
+
 export function HealthPanel({ result, spec, onResult }: { result: HealthResult; spec?: ServerSpec; onResult: (r: HealthResult) => void }) {
   if (!result.ok && result.unreachable) {
     return (
       <Callout tone="warn" icon={<WifiOff className="size-4" />}>
         <div className="font-medium">Not reachable from this network</div>
         <div className="break-words">{sentence(result.error)}</div>
-        <div className="mt-1">{unreachableAdvice(result.unreachable.host, result.privateNetwork)}</div>
+        <div className="mt-1">
+          {result.download ? registryUnreachableAdvice(result.unreachable.host, result.privateNetwork) : unreachableAdvice(result.unreachable.host, result.privateNetwork)}
+        </div>
         <ShowLog />
       </Callout>
     );
   }
   if (!result.ok) {
+    const signIn = result.download?.registry && (result.download.cause === 'sign-in' || (result.download.cause === 'not-found' && !result.download.dependency));
     return (
       <Callout tone="danger" icon={<XCircle className="size-4" />}>
-        <div className="font-medium">Connection failed</div>
-        <div className="break-words">{result.error}</div>
+        <div className="font-medium">{result.download ? "Couldn't download the package" : 'Connection failed'}</div>
+        <div className="break-words">{sentence(result.error)}</div>
+        {signIn && <LoginHint registry={result.download!.registry!} />}
         {result.privateNetwork && (
           <div className="mt-1">
             This server only works on {result.privateNetwork.vpn ?? 'a private network'}
@@ -469,6 +522,17 @@ export function InstallWizard({ source, onClose, onViewInstalled }: { source: Wi
             <Callout tone="accent" icon={<Network className="size-4" />}>
               Only reachable on {privateNetwork.vpn ?? 'a private network'}
               {privateNetworkDetail(privateNetwork)}. Testing fails unless you're connected; your apps can use it once you are.
+            </Callout>
+          )}
+          {source.kind === 'registry' && variant?.privateRegistry && (
+            <PrivateRegistryNote
+              registry={variant.privateRegistry}
+              passed={variant.ref.kind === 'package' && !!source.server.packages?.[variant.ref.index] && canPassRegistry(source.server.packages[variant.ref.index]!)}
+            />
+          )}
+          {source.kind === 'registry' && variant?.warning && (
+            <Callout tone="warn" icon={<AlertTriangle className="size-4" />}>
+              {variant.warning}
             </Callout>
           )}
           {spec && (

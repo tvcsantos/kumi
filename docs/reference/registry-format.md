@@ -118,6 +118,38 @@ Arguments also have:
 
 Packages with another `registryType` (for example `mcpb`), or whose `transport` isn't `stdio`, are listed but can't be installed yet.
 
+## Packages from a private registry
+
+`registryBaseUrl` says where the package is downloaded from. Leave it out, or set it to the public registry (`https://registry.npmjs.org`, `https://pypi.org`, `https://api.nuget.org/v3/index.json`), and Kumi writes nothing extra: each tool uses its own settings, including any company mirror.
+
+Set it to a company registry, and Kumi writes it into the command, so every app (and every teammate sharing a project config) downloads from there:
+
+| `registryType` | `registryBaseUrl` is | Added before the package |
+|---|---|---|
+| `npm`, scoped (`@acme/tickets`) | the registry URL | `--@acme:registry=<url>`: only `@acme` packages come from it. |
+| `npm`, unscoped (`tickets`) | the registry URL | `--registry=<url>`: the package **and all its dependencies** come from it, so it must also mirror npmjs.org. Publish under a scope to avoid that. |
+| `pypi` | the index URL uv uses, usually ending in `/simple` | `--index <url>`: the package comes from it, and PyPI stays available for dependencies. |
+| `nuget` | the NuGet service index (`…/v3/index.json`) | `--add-source <url>` |
+| `oci` | the registry, e.g. `https://registry.acme.com` | Nothing: put the host in `identifier` (`registry.acme.com/team/tickets`). A bare `team/tickets` gets the host from `registryBaseUrl`. |
+
+```json
+{
+  "registryType": "npm",
+  "registryBaseUrl": "https://npm.acme.com/",
+  "identifier": "@acme/tickets",
+  "version": "1.2.0"
+}
+```
+
+becomes `npx -y --@acme:registry=https://npm.acme.com/ @acme/tickets@1.2.0`.
+
+- **Sign-in stays with each tool**: `npm login`, `~/.netrc` for uv, `docker login`, your `NuGet.Config`. Don't put credentials in `registryBaseUrl`: Kumi leaves them out of the config and warns.
+- With a `runtimeHint` other than the default (for example `bunx`), Kumi can't pass the registry, and says so in the install wizard.
+- Images on Docker Hub, `ghcr.io`, `quay.io`, `mcr.microsoft.com`, `public.ecr.aws`, `gcr.io` and `registry.gitlab.com` count as public.
+- The official registry only accepts public package registries, so these entries go in [your own registry](../guide/registries), like a static file.
+
+Such packages get a **private registry** badge. See [Packages from a private registry](../guide/test-connection#packages-from-a-private-registry).
+
 ## Kumi's extension: private network
 
 A registry can tell Kumi that a server only works on a private network, such as a company VPN. Kumi then marks it on Discover, the server page and Installed, warns in the install wizard, and names the network when a test fails. See [Servers on a private network](../guide/test-connection#servers-on-a-private-network).

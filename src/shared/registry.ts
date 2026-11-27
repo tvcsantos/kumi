@@ -1,6 +1,8 @@
 // Subset of the official MCP Registry `server.json` schema that Kumi uses.
 // https://registry.modelcontextprotocol.io
 
+import type { PackageRegistry } from './package-registry';
+
 export interface RegistryInput {
   description?: string;
   isRequired?: boolean;
@@ -163,4 +165,8 @@ export interface InstallVariant {
   fields: InputField[];
   /** Set when Kumi can't install this variant. */
   unsupported?: string;
+  /** Packages only: the private registry it downloads from. */
+  privateRegistry?: PackageRegistry;
+  /** Something the install wizard should point out, e.g. credentials left out of the registry URL. */
+  warning?: string;
 }

@@ -24,6 +24,8 @@ Each card shows the server's name, description and badges:
 - **local**: the server has packages you run on your machine (npm, PyPI, Docker, NuGet).
 - **hosted**: the server has a remote endpoint you connect to over HTTP.
 - A **category** for featured servers.
+- **private network**: the server only works on a VPN or office network. See [Servers on a private network](./test-connection#servers-on-a-private-network).
+- **private registry**: its package downloads from a company registry. See [Packages from a private registry](./test-connection#packages-from-a-private-registry).
 
 ## Server detail
 
