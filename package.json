@@ -1,7 +1,7 @@
 {
   "name": "kumi",
   "productName": "Kumi",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "MCP marketplace: browse MCP servers and install them into Claude, VS Code, Cursor, Codex and GitHub Copilot.",
   "author": "Tiago Santos <tvcsantos@gmail.com>",
   "license": "MIT",
