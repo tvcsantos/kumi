@@ -1,6 +1,6 @@
 # Supported apps
 
-Kumi writes MCP servers into eleven apps. This page lists, for each one, where its config lives, its format, and an example of what Kumi writes.
+Kumi writes MCP servers into twelve apps. This page lists, for each one, where its config lives, its format, and an example of what Kumi writes.
 
 The examples install [Context7](https://context7.com) two ways: as a local npm package with an API key, and as a hosted server with an `Authorization` header.
 
@@ -19,6 +19,7 @@ The examples install [Context7](https://context7.com) two ways: as a local npm p
 | [Junie](#junie) | global, project | JSON | `mcpServers` |
 | [Air in JetBrains IDEs](#air-in-jetbrains-ides) | global | JSON | `mcpServers` |
 | [Zed](#zed) | global, project | JSONC | `context_servers` |
+| [Cline](#cline) | global | JSON | `mcpServers` |
 
 ## Transports
 
@@ -35,6 +36,7 @@ The examples install [Context7](https://context7.com) two ways: as a local npm p
 | Junie | ✅ | ✅ | via `mcp-remote` |
 | Air in JetBrains IDEs | ✅ | ✅ | via `mcp-remote` |
 | Zed | ✅ | ✅ | via `mcp-remote` |
+| Cline | ✅ | ✅ | ✅ |
 
 **via `mcp-remote`** means the app can't connect to that kind of server from its config file, so Kumi runs [`mcp-remote`](https://www.npmjs.com/package/mcp-remote), a stdio bridge, in its place. Headers are passed through environment variables named `MCP_HEADER_<NAME>`, which `mcp-remote` expands itself, so values with spaces need no quoting. The bridge needs Node.js.
 
@@ -490,3 +492,43 @@ On Windows, `npx`, `npm`, `pnpm`, `pnpx`, `yarn` and `bunx` are `.cmd` shims tha
 ## Coming later
 
 Windsurf, Cline, Gemini CLI, Continue, and Copilot in JetBrains and Visual Studio are on the roadmap. Each app is one adapter; see [Adding an app](../contributing/adding-an-app).
+
+## Cline
+
+| | |
+|---|---|
+| **Global** | `~/.cline/data/settings/cline_mcp_settings.json` (`%USERPROFILE%\.cline\data\settings\cline_mcp_settings.json` on Windows). Moved by `$CLINE_MCP_SETTINGS_PATH` (the file itself), `$CLINE_DATA_DIR` (replaces `~/.cline/data`) or `$CLINE_DIR` (replaces `~/.cline`). |
+| **Detected by** | `cline` on `PATH`, or `~/.cline` |
+
+The Cline CLI and the Cline extension for VS Code share this file, so one install covers both. Older versions of the extension kept the file in VS Code's extension storage; current ones move those servers here. Cline has no project-level MCP file.
+
+Kumi always writes `type`, because Cline reads a `url` without one as the legacy SSE transport: `stdio`, `streamableHttp` or `sse`. Cline watches the file and reconnects without a restart; check the **MCP Servers** view in the extension, or `cline mcp` in the CLI.
+
+::: code-group
+
+```json [Local package]
+{
+  "mcpServers": {
+    "context7": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@upstash/context7-mcp@4.4.4"],
+      "env": { "CONTEXT7_API_KEY": "…" }
+    }
+  }
+}
+```
+
+```json [Hosted]
+{
+  "mcpServers": {
+    "context7": {
+      "type": "streamableHttp",
+      "url": "https://mcp.context7.com/mcp",
+      "headers": { "Authorization": "Bearer …" }
+    }
+  }
+}
+```
+
+:::

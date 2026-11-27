@@ -11,6 +11,9 @@ import type { HostEnv } from './clients/types';
 const SHELL_VARS = [
   'CLAUDE_CONFIG_DIR',
   'CODEX_HOME',
+  'CLINE_DIR',
+  'CLINE_DATA_DIR',
+  'CLINE_MCP_SETTINGS_PATH',
   'XDG_CONFIG_HOME',
   'NODE_EXTRA_CA_CERTS',
   'SSL_CERT_FILE',

@@ -1,0 +1,28 @@
+{
+  "mcpServers": {
+    "legacy-sse": {
+      "url": "https://legacy.example.com/sse",
+      "disabled": false,
+      "autoApprove": []
+    },
+    "http-alias": {
+      "transportType": "http",
+      "url": "https://alias.example.com/mcp"
+    },
+    "nested": {
+      "transport": {
+        "type": "streamableHttp",
+        "url": "https://nested.example.com/mcp",
+        "headers": { "X-Team": "core" }
+      },
+      "timeout": 60
+    },
+    "fs": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"],
+      "autoApprove": ["read_file"]
+    }
+  },
+  "someOtherSetting": true
+}

@@ -19,6 +19,7 @@ A desktop MCP marketplace. Browse MCP servers from the official [MCP Registry](h
 | Junie (JetBrains) | global, project (`.junie/mcp/mcp.json`) | `~/.junie/mcp/mcp.json` (CLI and IDE plugin; SSE servers via `mcp-remote`) |
 | Air in JetBrains IDEs | global | `~/.jetbrains/mcp/mcp.json` (SSE servers via `mcp-remote`) |
 | Zed | global, project (`.zed/settings.json`) | `~/.config/zed/settings.json` (JSONC, `context_servers`; SSE servers via `mcp-remote`) |
+| Cline | global | `~/.cline/data/settings/cline_mcp_settings.json` (CLI and VS Code extension; honors `CLINE_MCP_SETTINGS_PATH`, `CLINE_DATA_DIR`, `CLINE_DIR`) |
 
 ## Showcase
 

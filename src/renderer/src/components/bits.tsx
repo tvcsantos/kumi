@@ -22,6 +22,7 @@ const CLIENT_STYLE: Record<ClientId, { short: string; color: string }> = {
   junie: { short: 'Ju', color: '#3d9a50' },
   'jetbrains-air': { short: 'Ai', color: '#7b5cff' },
   zed: { short: 'Ze', color: '#084ccf' },
+  cline: { short: 'Cl', color: '#5b6cf0' },
 };
 
 /** Kumi's own icon, in the variant that suits the current theme. */

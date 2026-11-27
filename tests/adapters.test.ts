@@ -280,3 +280,44 @@ describe('zed', () => {
     expect(adapter.configPath({ home: '/h', vars: {} } as never, { kind: 'project', projectDir: '/repo' })).toBe(join('/repo', '.zed', 'settings.json'));
   });
 });
+
+describe('cline', () => {
+  const adapter = getAdapter('cline');
+  type Settings = { mcpServers: Record<string, unknown>; someOtherSetting?: boolean };
+
+  it('always writes a type, since Cline reads a bare url as SSE', () => {
+    const http = parseJson(adapter.upsert('', remote, user, mac).text) as Settings;
+    expect(http.mcpServers.remote).toEqual({ type: 'streamableHttp', url: remote.url, headers: remote.headers });
+    const sse = parseJson(adapter.upsert('', { ...remote, transport: 'sse' }, user, mac).text) as Settings;
+    expect(sse.mcpServers.remote).toMatchObject({ type: 'sse', url: remote.url });
+    const local = parseJson(adapter.upsert('', stdio, user, mac).text) as Settings;
+    expect(local.mcpServers.context7).toEqual({ type: 'stdio', command: 'npx', args: stdio.args, env: stdio.env });
+  });
+
+  it('reads legacy, aliased and nested entries the way Cline does', () => {
+    const servers = adapter.readServers(fixture('cline_mcp_settings.json'), user);
+    expect(servers['legacy-sse']).toMatchObject({ transport: 'sse', url: 'https://legacy.example.com/sse' });
+    expect(servers['http-alias']).toMatchObject({ transport: 'streamable-http', url: 'https://alias.example.com/mcp' });
+    expect(servers.nested).toMatchObject({ transport: 'streamable-http', url: 'https://nested.example.com/mcp', headers: { 'X-Team': 'core' } });
+    expect(servers.fs).toMatchObject({ transport: 'stdio', command: 'npx' });
+  });
+
+  it('keeps other servers and settings on install and remove', () => {
+    const before = fixture('cline_mcp_settings.json');
+    const { text } = adapter.upsert(before, stdio, user, mac);
+    const json = parseJson(text) as Settings;
+    expect(json.someOtherSetting).toBe(true);
+    expect(json.mcpServers.fs).toEqual((parseJson(before) as Settings).mcpServers.fs);
+    expect(Object.keys(adapter.readServers(text, user))).toEqual(['legacy-sse', 'http-alias', 'nested', 'fs', 'context7']);
+    expect(parseJson(adapter.remove(text, 'context7', user))).toEqual(parseJson(before));
+  });
+
+  it('uses ~/.cline/data/settings and follows the Cline env vars', () => {
+    const file = 'cline_mcp_settings.json';
+    expect(adapter.configPath({ home: '/h', vars: {} } as never, user)).toBe(join('/h', '.cline', 'data', 'settings', file));
+    expect(adapter.configPath({ home: '/h', vars: { CLINE_DIR: '/c' } } as never, user)).toBe(join('/c', 'data', 'settings', file));
+    expect(adapter.configPath({ home: '/h', vars: { CLINE_DIR: '/c', CLINE_DATA_DIR: '/d' } } as never, user)).toBe(join('/d', 'settings', file));
+    expect(adapter.configPath({ home: '/h', vars: { CLINE_DATA_DIR: '/d', CLINE_MCP_SETTINGS_PATH: '/m.json' } } as never, user)).toBe('/m.json');
+    expect(adapter.scopes).toEqual(['user']);
+  });
+});

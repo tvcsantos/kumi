@@ -15,6 +15,9 @@ Some apps let you move their config with an environment variable. Kumi follows t
 | `CLAUDE_CONFIG_DIR` | Claude Code | Global config is `$CLAUDE_CONFIG_DIR/.claude.json` instead of `~/.claude.json`. |
 | `CODEX_HOME` | OpenAI Codex | Config is `$CODEX_HOME/config.toml` instead of `~/.codex/config.toml`. |
 | `XDG_CONFIG_HOME` | OpenCode; on Linux also Claude Desktop and VS Code | Replaces `~/.config`. |
+| `CLINE_MCP_SETTINGS_PATH` | Cline | The MCP settings file itself, instead of `~/.cline/data/settings/cline_mcp_settings.json`. |
+| `CLINE_DATA_DIR` | Cline | Replaces `~/.cline/data`. |
+| `CLINE_DIR` | Cline | Replaces `~/.cline`. |
 | `PI_CODING_AGENT_DIR` | Pi | Global config is `$PI_CODING_AGENT_DIR/mcp.json` instead of `~/.pi/agent/mcp.json`. |
 | `APPDATA`, `LOCALAPPDATA` | Windows | Where Claude Desktop and VS Code keep their config, and where Claude Desktop is detected. |
 
@@ -25,7 +28,7 @@ Apps opened from the Dock, Finder or a desktop launcher on macOS and Linux start
 So at startup Kumi asks your login shell (`$SHELL -ilc`, falling back to `/bin/zsh`) for:
 
 - `PATH`, merged with the one Kumi started with, to find `npx`, `uvx`, `docker`, `dnx` and the app commands it uses for detection;
-- `CLAUDE_CONFIG_DIR`, `CODEX_HOME` and `XDG_CONFIG_HOME`, if Kumi didn't already have them;
+- `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `CLINE_DIR`, `CLINE_DATA_DIR`, `CLINE_MCP_SETTINGS_PATH` and `XDG_CONFIG_HOME`, if Kumi didn't already have them;
 - the [certificate variables](#certificates) below, if Kumi didn't already have them.
 
 This takes at most five seconds, and the window opens while it runs. On Windows, GUI apps already see the user's environment, so this step is skipped.
@@ -56,5 +59,6 @@ Point Kumi at a throwaway home and data directory. This is mostly useful for dev
 
 ```bash
 env -u CLAUDE_CONFIG_DIR -u CODEX_HOME -u XDG_CONFIG_HOME -u PI_CODING_AGENT_DIR \
+  -u CLINE_DIR -u CLINE_DATA_DIR -u CLINE_MCP_SETTINGS_PATH \
   HOME=/tmp/kumi-home KUMI_DATA_DIR=/tmp/kumi-home/.kumi npm run dev
 ```

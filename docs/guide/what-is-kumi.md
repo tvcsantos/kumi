@@ -41,6 +41,7 @@ Setting up one server in four apps means four different edits. Kumi does them fo
 | GitHub Copilot CLI | global |
 | OpenCode | global, project |
 | Pi | global, project |
+| Cline | global |
 
 The [Supported apps](../reference/apps) reference lists each app's config file, format and transports, with an example of what Kumi writes.
 
