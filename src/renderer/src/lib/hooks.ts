@@ -1,8 +1,39 @@
-import { useQuery } from '@tanstack/react-query';
-import { useSyncExternalStore } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useEffect, useSyncExternalStore } from 'react';
 import type { RegistryInfo } from '@shared/registry';
-import type { InstalledEntry } from '@shared/types';
+import type { InstalledEntry, RuntimeStatus } from '@shared/types';
 import { api } from './api';
+
+const RUNTIMES_KEY = ['runtimes'];
+
+/** npx, uvx & co. and where they were found. */
+export function useRuntimes() {
+  return useQuery({ queryKey: RUNTIMES_KEY, queryFn: () => api.runtimesCheck() });
+}
+
+/** Checks the runtimes again, re-reading PATH first if one is missing, so a fresh install shows up. */
+export function useRecheckRuntimes() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.runtimesCheck({ refreshPath: true }),
+    onSuccess: (runtimes: RuntimeStatus[]) => queryClient.setQueryData(RUNTIMES_KEY, runtimes),
+  });
+}
+
+/**
+ * While `enabled`, re-checks the runtimes each time the Kumi window regains focus: the user is likely coming back
+ * from an installer. Window focus, not React Query's own focus handling, which only listens to `visibilitychange`
+ * and so misses switching apps in Electron.
+ */
+export function useRecheckRuntimesOnFocus(enabled: boolean) {
+  const { mutate } = useRecheckRuntimes();
+  useEffect(() => {
+    if (!enabled) return;
+    const onFocus = () => mutate();
+    window.addEventListener('focus', onFocus);
+    return () => window.removeEventListener('focus', onFocus);
+  }, [enabled, mutate]);
+}
 
 export function useInstalled() {
   return useQuery({ queryKey: ['installed'], queryFn: api.installedList, staleTime: 5_000 });

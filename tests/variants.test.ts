@@ -1,8 +1,8 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import type { RegistryServer } from '@shared/registry';
-import { getVariants, initialValues, maskSpec, resolveVariant, suggestName, validateValues } from '@shared/variants';
+import type { InstallVariant, RegistryServer } from '@shared/registry';
+import { defaultVariant, getVariants, initialValues, maskSpec, resolveVariant, suggestName, validateValues } from '@shared/variants';
 
 const servers: RegistryServer[] = JSON.parse(readFileSync(join(__dirname, 'fixtures/registry/servers.json'), 'utf8'));
 const byName = (name: string) => servers.find((s) => s.name === name)!;
@@ -94,6 +94,40 @@ describe('resolveVariant', () => {
 
   it('rejects invalid server names', () => {
     expect(resolveVariant(byName('io.github.upstash/context7'), { kind: 'package', index: 0 }, 'bad name', {}).ok).toBe(false);
+  });
+});
+
+describe('defaultVariant', () => {
+  const v = (kind: 'package' | 'remote', index: number, runtime?: string, unsupported?: string): InstallVariant => ({
+    ref: { kind, index },
+    label: `${kind}${index}`,
+    transport: kind === 'remote' ? 'streamable-http' : 'stdio',
+    runtime,
+    fields: [],
+    unsupported,
+  });
+
+  it('prefers hosted over local, even when the runtime is installed', () => {
+    expect(defaultVariant([v('package', 0, 'npx'), v('remote', 0)], new Set(['npx']))?.label).toBe('remote0');
+  });
+
+  it('prefers a local variant whose runtime is installed', () => {
+    expect(defaultVariant([v('package', 0, 'npx'), v('package', 1, 'docker')], new Set(['docker']))?.label).toBe('package1');
+  });
+
+  it('otherwise ranks by how easy the runtime is to install', () => {
+    expect(defaultVariant([v('package', 0, 'dnx'), v('package', 1, 'docker'), v('package', 2, 'uvx')], new Set())?.label).toBe('package2');
+    // Runtimes not known yet: same ease order.
+    expect(defaultVariant([v('package', 0, 'docker'), v('package', 1, 'npx')])?.label).toBe('package1');
+  });
+
+  it('keeps the publisher order on ties and skips unsupported variants', () => {
+    expect(defaultVariant([v('remote', 0, undefined, 'nope'), v('package', 0, 'npx'), v('package', 1, 'npx')])?.label).toBe('package0');
+    expect(defaultVariant([v('package', 0, undefined, 'nope')])).toBeUndefined();
+  });
+
+  it('picks the hosted variant of a real registry entry', () => {
+    expect(defaultVariant(getVariants(byName('io.github.upstash/context7')))?.ref.kind).toBe('remote');
   });
 });
 

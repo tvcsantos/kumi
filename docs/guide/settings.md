@@ -46,7 +46,7 @@ Every app Kumi supports, whether it was detected on this machine, and where it k
 
 ## Runtimes
 
-The programs local MCP servers need (`npx`, `uvx`, `docker`, `dnx`), where Kumi found each one, and how to install the missing ones.
+The programs local MCP servers need (`npx`, `uvx`, `docker`, `dnx`), where Kumi found each one, and how to install the missing ones. After installing one, switch back to Kumi or click the refresh button, and Kumi looks again without needing a restart.
 
 ## Backups
 

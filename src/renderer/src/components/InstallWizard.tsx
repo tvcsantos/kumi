@@ -18,7 +18,7 @@ import type {
 } from '@shared/types';
 import { defaultVariant, getVariants, initialValues, resolveVariant, suggestName, validateValues, type FormValues } from '@shared/variants';
 import { api, errorMessage } from '../lib/api';
-import { useSettings } from '../lib/hooks';
+import { useRecheckRuntimesOnFocus, useRuntimes, useSettings } from '../lib/hooks';
 import { ClientMark, DiffView, displayName, privateNetworkDetail, scopeLabel, ServerIcon, useRegistryNetwork } from './bits';
 import { CustomServerForm, customFormFromSpec, specFromCustomForm, type CustomForm } from './CustomServerForm';
 import { FieldInput } from './FieldInput';
@@ -249,7 +249,7 @@ function compat(client: ClientInfo, spec: ServerSpec | undefined): 'ok' | 'bridg
 export function InstallWizard({ source, onClose, onViewInstalled }: { source: WizardSource; onClose: () => void; onViewInstalled: () => void }) {
   const queryClient = useQueryClient();
   const clients = useQuery({ queryKey: ['clients'], queryFn: api.clientsList });
-  const runtimes = useQuery({ queryKey: ['runtimes'], queryFn: api.runtimesCheck });
+  const runtimes = useRuntimes();
   const settings = useSettings();
 
   const [step, setStep] = useState<Step>('configure');
@@ -262,7 +262,9 @@ export function InstallWizard({ source, onClose, onViewInstalled }: { source: Wi
     if (source.kind !== 'registry') return 0;
     const ref = source.edit?.variantRef;
     const i = ref ? variants.findIndex((v) => v.ref.kind === ref.kind && v.ref.index === ref.index) : -1;
-    return i >= 0 ? i : Math.max(0, variants.indexOf(defaultVariant(variants)!));
+    // App checks runtimes at launch, so they're usually known by now; if not, the ranking just can't prefer installed ones.
+    const installed = runtimes.data && new Set(runtimes.data.filter((r) => r.path).map((r) => r.name));
+    return i >= 0 ? i : Math.max(0, variants.indexOf(defaultVariant(variants, installed)!));
   });
   const variant = variants[variantIdx];
   const [name, setName] = useState(() => (source.kind === 'registry' ? (source.edit?.name ?? suggestName(source.server)) : ''));
@@ -296,6 +298,10 @@ export function InstallWizard({ source, onClose, onViewInstalled }: { source: Wi
   const spec = resolved.spec;
   const hasSecrets = !!(spec?.secretEnv?.length || spec?.secretHeaders?.length);
   const runtime = variant?.runtime ? runtimes.data?.find((r) => r.name === variant.runtime) : undefined;
+  // Apps that reach hosted servers through mcp-remote need npx for them, even though nothing else runs locally.
+  const npx = runtimes.data?.find((r) => r.name === 'npx');
+  const bridgeMissingNpx = !!npx && !npx.path && !!clients.data?.some((c) => compat(c, spec) === 'bridged');
+  useRecheckRuntimesOnFocus((!!runtime && !runtime.path) || bridgeMissingNpx);
   const registryFlag = server ? registryPrivateNetwork(server) : undefined;
   const privateNetwork = privateNetworkFor(registryFlag, [spec?.url], settings.data);
 
@@ -576,6 +582,14 @@ export function InstallWizard({ source, onClose, onViewInstalled }: { source: Wi
                     )}
                     {support === 'unsupported' && <Badge tone="danger">not supported</Badge>}
                   </label>
+                  {support === 'bridged' && npx && !npx.path && (
+                    <p className="order-last flex w-full items-start gap-1.5 text-xs text-warn">
+                      <AlertTriangle className="mt-px size-3.5 shrink-0" />
+                      <span>
+                        {c.displayName} needs <span className="font-mono">npx</span> for hosted servers, and it wasn't found on this machine. {npx.installHint}
+                      </span>
+                    </p>
+                  )}
                   {t.selected && (
                     <div className="flex items-center gap-2">
                       {c.scopes.length > 1 && (

@@ -5,7 +5,7 @@
 - **Restart the app.** Claude Desktop only reads its config at startup. Other apps may need a new session or a reload.
 - **Check the scope.** A project-scoped server only shows up when the app is opened in that folder. Pi reads project configs only after you trust the project.
 - **Check the runtime.** Your app starts the server itself, with its own `PATH`. If it was opened from the Dock or a launcher, it may not see a runtime installed through nvm, asdf or similar. Using an absolute path for the command (a [custom server](./custom-servers)) works around this.
-- **Bridged servers need Node.js.** Servers routed through `mcp-remote` run `npx -y mcp-remote …`, so `npx` must be available to the app.
+- **Bridged servers need Node.js.** Servers routed through `mcp-remote` run `npx -y mcp-remote …`, so `npx` must be available to the app. When it isn't installed, the **Choose apps** step says so on each app that needs the bridge.
 
 ## "…wasn't installed by Kumi"
 

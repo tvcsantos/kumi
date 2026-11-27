@@ -147,7 +147,7 @@ function createHandlers(s: Services): Handlers {
           }),
         ),
       ),
-    runtimesCheck: () => checkRuntimes(),
+    runtimesCheck: (opts) => checkRuntimes(z.object({ refreshPath: z.boolean().optional() }).optional().parse(opts)),
     installPlan: async (req) => {
       const request = installRequest.parse(req);
       for (const t of request.targets) if (t.scope.projectDir) await s.state.addProject(t.scope.projectDir);

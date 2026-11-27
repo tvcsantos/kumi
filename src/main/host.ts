@@ -22,32 +22,87 @@ const SHELL_VARS = [
   'CURL_CA_BUNDLE',
 ];
 
+/** Merges PATH lists in order, dropping empty entries and duplicates. */
+export function mergePath(...lists: (string | undefined)[]): string {
+  const entries = lists.flatMap((l) => (l ?? '').split(delimiter)).filter(Boolean);
+  return [...new Set(entries)].join(delimiter);
+}
+
+/** Runs the user's login shell and reads the given variables, like a terminal sees them. */
+function readLoginShell(vars: string[]): Promise<Record<string, string>> {
+  const shell = process.env.SHELL || '/bin/zsh';
+  const marker = '__KUMI_ENV__';
+  const script = vars.map((v) => `printf '${marker}${v}=%s${marker}' "$${v}"`).join('; ');
+  return new Promise((resolve) => {
+    execFile(shell, ['-ilc', script], { timeout: 5000, encoding: 'utf8' }, (err, stdout) => {
+      const values: Record<string, string> = {};
+      if (!err) for (const [, name, value] of stdout.matchAll(new RegExp(`${marker}([A-Z_]+)=(.*?)${marker}`, 'g'))) values[name] = value;
+      resolve(values);
+    });
+  });
+}
+
 /**
  * GUI apps on macOS/Linux start with a minimal environment, so `npx`, `uvx` or `claude` installed through
  * nvm/Homebrew/etc. aren't found. Ask the user's login shell for PATH (and config-location vars), like a terminal sees.
  */
-export function loadShellEnv(): Promise<void> {
-  if (process.platform === 'win32') return Promise.resolve();
-  const shell = process.env.SHELL || '/bin/zsh';
-  const marker = '__KUMI_ENV__';
-  const vars = ['PATH', ...SHELL_VARS];
-  const script = vars.map((v) => `printf '${marker}${v}=%s${marker}' "$${v}"`).join('; ');
-  return new Promise((resolve) => {
-    execFile(shell, ['-ilc', script], { timeout: 5000, encoding: 'utf8' }, (err, stdout) => {
-      if (!err) {
-        for (const m of stdout.matchAll(new RegExp(`${marker}([A-Z_]+)=(.*?)${marker}`, 'g'))) {
-          const [, name, value] = m;
-          if (name === 'PATH') {
-            const merged = [...value.split(delimiter), ...(process.env.PATH ?? '').split(delimiter)].filter(Boolean);
-            process.env.PATH = [...new Set(merged)].join(delimiter);
-          } else if (value && !process.env[name]) {
-            process.env[name] = value;
-          }
-        }
-      }
-      resolve();
-    });
+export async function loadShellEnv(): Promise<void> {
+  if (process.platform === 'win32') return;
+  const values = await readLoginShell(['PATH', ...SHELL_VARS]);
+  for (const [name, value] of Object.entries(values)) {
+    if (name === 'PATH') process.env.PATH = mergePath(value, process.env.PATH);
+    else if (value && !process.env[name]) process.env[name] = value;
+  }
+}
+
+const WINDOWS_PATH_KEYS = ['HKLM\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment', 'HKCU\\Environment'];
+
+/** Expands `%VAR%` references the way Windows does (names are case-insensitive), leaving unknown ones as they are. */
+export function expandWindowsVars(value: string, vars: Record<string, string | undefined>): string {
+  return value.replace(/%([^%]+)%/g, (whole, name: string) => {
+    const key = Object.keys(vars).find((k) => k.toLowerCase() === name.toLowerCase());
+    return (key && vars[key]) || whole;
   });
+}
+
+/** Reads the `Path` value out of `reg query <key> /v Path` output; null when there is none. */
+export function parseRegPath(stdout: string, vars: Record<string, string | undefined>): string | null {
+  const m = /^\s*Path\s+REG_(?:EXPAND_)?SZ\s+(.*)$/im.exec(stdout);
+  return m ? expandWindowsVars(m[1].trim(), vars) : null;
+}
+
+/** The system and user PATH as stored in the registry: installers update it, but running apps never see the change. */
+async function readWindowsPath(): Promise<string> {
+  const read = (key: string) =>
+    new Promise<string | undefined>((resolve) => {
+      execFile('reg', ['query', key, '/v', 'Path'], { timeout: 5000, encoding: 'utf8', windowsHide: true }, (err, stdout) =>
+        resolve(err ? undefined : (parseRegPath(stdout, process.env) ?? undefined)),
+      );
+    });
+  return mergePath(...(await Promise.all(WINDOWS_PATH_KEYS.map(read))));
+}
+
+const REFRESH_COOLDOWN_MS = 10_000;
+let refreshing: Promise<void> | null = null;
+let lastRefresh = 0;
+
+/**
+ * Re-reads PATH so a runtime installed while Kumi is open is found without a restart: from the login shell on
+ * macOS/Linux, from the registry on Windows. Runs one at a time, and at most once per cooldown.
+ */
+export function refreshPath(): Promise<void> {
+  if (refreshing) return refreshing;
+  if (Date.now() - lastRefresh < REFRESH_COOLDOWN_MS) return Promise.resolve();
+  refreshing = (async () => {
+    try {
+      if (process.platform === 'win32') process.env.PATH = mergePath(process.env.PATH, await readWindowsPath());
+      else process.env.PATH = mergePath((await readLoginShell(['PATH'])).PATH, process.env.PATH);
+    } finally {
+      lastRefresh = Date.now();
+      refreshing = null;
+    }
+  })();
+  return refreshing;
 }
 
 async function exists(path: string): Promise<boolean> {

@@ -12,6 +12,7 @@ import { hostOf, matchHost, type PrivateNetwork, type PrivateNetworkSettings } f
 import type { DownloadFailure, HealthResult, HealthTestOptions, ServerSpec } from '@shared/types';
 import { registryOfSpec } from '@shared/package-registry';
 import { log } from '../log';
+import { installHintFor } from '../runtime/detect';
 import { describeDownload, downloadFailure } from './download';
 import { causeOf, codedError, describeCause, errorCode, isUnreachable, probe, resolveAddress, type NetworkCause } from './network';
 import { OAuthSession, type OpenBrowser } from './oauth';
@@ -46,8 +47,14 @@ function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
   });
 }
 
-function hint(message: string, stderr: string): string {
-  if (/ENOENT|not found|spawn .* ENOENT/i.test(message)) return `${message}. Is the command installed and on your PATH?`;
+/** Adds what to do next to a failure message. `command` is the stdio server's command, if any. */
+export function hint(message: string, stderr: string, command?: string): string {
+  if (/ENOENT|not found|spawn .* ENOENT/i.test(message)) {
+    // A runtime Kumi knows gets the same words as the install wizard's warning.
+    const install = installHintFor(command);
+    if (install) return `${command} wasn't found on this machine. ${install}`;
+    return `${message}. Is the command installed and on your PATH?`;
+  }
   if (/\b401\b|unauthori[sz]ed/i.test(message + stderr)) return `${message}. Check your API key or token.`;
   if (/\b403\b|forbidden/i.test(message + stderr)) return `${message}. The credentials don't have access.`;
   return message;
@@ -250,7 +257,7 @@ export async function testServer(spec: ServerSpec, opts: TestOptions = {}): Prom
     }
     const privateNetwork = privateNetworkOf(spec, opts, address, download?.host);
     // The download's own words already say what to do; the generic hints would misread a registry's 401.
-    const error = download ? message : hint(message, fullStderr);
+    const error = download ? message : hint(message, fullStderr, spec.transport === 'stdio' ? spec.command : undefined);
     const durationMs = Date.now() - started;
     const stack = e instanceof Error && e.stack ? `\n${e.stack}` : '';
     await log(

@@ -10,12 +10,15 @@ import { RegistryDialog } from '../components/RegistryDialog';
 import { useCheckForUpdates } from '../components/Updates';
 import { Badge, Button, cx, Input, PageHeader, Select, Spinner } from '../components/ui';
 import { api, errorMessage } from '../lib/api';
-import { useRegistries } from '../lib/hooks';
+import { useRecheckRuntimes, useRecheckRuntimesOnFocus, useRegistries, useRuntimes } from '../lib/hooks';
 
-function Section({ title, description, children }: { title: string; description?: string; children: React.ReactNode }) {
+function Section({ title, description, action, children }: { title: string; description?: string; action?: React.ReactNode; children: React.ReactNode }) {
   return (
     <section className="rounded-2xl border border-line bg-panel p-5">
-      <h2 className="font-semibold">{title}</h2>
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="font-semibold">{title}</h2>
+        {action}
+      </div>
       {description && <p className="mt-0.5 text-sm text-muted">{description}</p>}
       <div className="mt-4">{children}</div>
     </section>
@@ -263,7 +266,9 @@ export function Settings() {
   const queryClient = useQueryClient();
   const settings = useQuery({ queryKey: ['settings'], queryFn: api.settingsGet });
   const clients = useQuery({ queryKey: ['clients'], queryFn: api.clientsList });
-  const runtimes = useQuery({ queryKey: ['runtimes'], queryFn: api.runtimesCheck });
+  const runtimes = useRuntimes();
+  const recheckRuntimes = useRecheckRuntimes();
+  useRecheckRuntimesOnFocus(!!runtimes.data?.some((r) => !r.path));
   const backups = useQuery({ queryKey: ['backups'], queryFn: api.backupsList });
 
   const save = useMutation({
@@ -351,7 +356,21 @@ export function Settings() {
         </ul>
       </Section>
 
-      <Section title="Runtimes" description="Programs that local MCP servers need.">
+      <Section
+        title="Runtimes"
+        description="Programs that local MCP servers need."
+        action={
+          <Button
+            size="sm"
+            variant="ghost"
+            icon={<RefreshCw className="size-3.5" />}
+            loading={recheckRuntimes.isPending}
+            onClick={() => recheckRuntimes.mutate()}
+            title="Check again"
+            aria-label="Check runtimes again"
+          />
+        }
+      >
         <ul className="space-y-2">
           {runtimes.data?.map((r) => (
             <li key={r.name} className="flex items-center gap-3 text-sm">

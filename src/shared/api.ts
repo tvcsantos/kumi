@@ -126,7 +126,8 @@ export interface KumiApi {
   /** Fetches the registry again now, ignoring the cache. Fails when it can't be reached. */
   registriesRefresh(id: string): Promise<void>;
   clientsList(): Promise<ClientInfo[]>;
-  runtimesCheck(): Promise<RuntimeStatus[]>;
+  /** Looks up npx, uvx & co. `refreshPath` re-reads PATH first when one is missing, to catch a fresh install. */
+  runtimesCheck(opts?: { refreshPath?: boolean }): Promise<RuntimeStatus[]>;
   installPlan(request: InstallRequest): Promise<InstallPlan>;
   installApply(planId: string): Promise<ApplyResult[]>;
   installedList(): Promise<InstalledView>;

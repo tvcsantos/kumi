@@ -214,9 +214,24 @@ export function getVariants(server: RegistryServer): InstallVariant[] {
   return [...(server.packages ?? []).map(packageVariant), ...(server.remotes ?? []).map(remoteVariant)];
 }
 
-/** Picks the variant to preselect: first supported package, else first supported remote. */
-export function defaultVariant(variants: InstallVariant[]): InstallVariant | undefined {
-  return variants.find((v) => !v.unsupported);
+/** Local runtimes from easiest to install to hardest; others rank after these. */
+const RUNTIME_EASE = ['npx', 'uvx', 'docker', 'dnx'];
+
+/**
+ * Picks the variant to preselect among the supported ones: hosted first (nothing to install), then local ones whose
+ * runtime is installed, then the rest by how easy their runtime is to install. Ties keep the publisher's order.
+ * `installedRuntimes` holds the runtimes found on this machine; leave it out when that isn't known yet.
+ */
+export function defaultVariant(variants: InstallVariant[], installedRuntimes?: ReadonlySet<string>): InstallVariant | undefined {
+  const rank = (v: InstallVariant): number => {
+    if (v.ref.kind === 'remote') return 0;
+    if (v.runtime && installedRuntimes?.has(v.runtime)) return 1;
+    const ease = v.runtime ? RUNTIME_EASE.indexOf(v.runtime) : -1;
+    return 2 + (ease < 0 ? RUNTIME_EASE.length : ease);
+  };
+  let best: InstallVariant | undefined;
+  for (const v of variants) if (!v.unsupported && (!best || rank(v) < rank(best))) best = v;
+  return best;
 }
 
 export function initialValues(variant: InstallVariant): FormValues {

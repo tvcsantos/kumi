@@ -8,7 +8,7 @@ import { cx } from './components/ui';
 import { UpdateRequired } from './components/UpdateRequired';
 import { UpdateBanner, useUpdateStatus } from './components/Updates';
 import { api } from './lib/api';
-import { useInstalled } from './lib/hooks';
+import { useInstalled, useRuntimes } from './lib/hooks';
 import { dismissSplash } from './lib/splash';
 import { About } from './pages/About';
 import { Discover } from './pages/Discover';
@@ -43,6 +43,8 @@ export function App() {
   const installed = useInstalled();
   const settings = useQuery({ queryKey: ['settings'], queryFn: api.settingsGet });
   const updates = useUpdateStatus();
+  // Checked at launch, so the install wizard knows which runtimes exist when it picks a default variant.
+  useRuntimes();
   const serverCount = new Set(installed.data?.entries.map((e) => e.name)).size;
   const main = useRef<HTMLElement>(null);
 

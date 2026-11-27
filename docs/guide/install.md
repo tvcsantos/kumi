@@ -9,9 +9,9 @@ Click **Install** on a server's detail page to open the install wizard. It has f
 
 ### How to run it
 
-If the server has more than one [variant](./discover#ways-to-run-it), pick one. Each is marked **runs locally** or **hosted**. Kumi preselects the first one it can install.
+If the server has more than one [variant](./discover#ways-to-run-it), pick one. Each is marked **runs locally** or **hosted**. Kumi preselects the easiest one it can install: a hosted variant if there is one, since nothing needs installing. Otherwise a local variant whose runtime you already have, and after that the one whose runtime is easiest to install (Node.js, then uv, Docker and .NET).
 
-If a local variant needs a runtime that isn't on your machine, such as `npx` or `uvx`, Kumi warns you and links to how to install it. You can still go ahead; the server just won't start until the runtime is there.
+If a local variant needs a runtime that isn't on your machine, such as `npx` or `uvx`, Kumi warns you and links to how to install it. You can still go ahead; the server just won't start until the runtime is there. Once you've installed it, switch back to Kumi and the warning clears by itself.
 
 ### Server name
 
