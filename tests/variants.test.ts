@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import type { InstallVariant, RegistryServer } from '@shared/registry';
+import type { InstallVariant, RegistryPackage, RegistryServer } from '@shared/registry';
 import { defaultVariant, getVariants, initialValues, maskSpec, resolveVariant, suggestName, validateValues } from '@shared/variants';
 
 const servers: RegistryServer[] = JSON.parse(readFileSync(join(__dirname, 'fixtures/registry/servers.json'), 'utf8'));
@@ -12,11 +12,35 @@ describe('getVariants', () => {
     const variants = getVariants(byName('io.github.upstash/context7'));
     expect(variants.map((v) => [v.ref.kind, v.transport, !!v.unsupported])).toEqual([
       ['package', 'stdio', false],
-      ['package', 'stdio', true], // mcpb
+      ['package', 'stdio', false], // mcpb
       ['remote', 'streamable-http', false],
     ]);
     expect(variants[0].fields.map((f) => [f.id, f.secret, f.required])).toEqual([['env.CONTEXT7_API_KEY', true, false]]);
     expect(variants[0].runtime).toBe('npx');
+  });
+
+  it('describes an mcpb package by its bundle, without fields until it is downloaded', () => {
+    const variant = getVariants(byName('io.github.upstash/context7'))[1];
+    expect(variant.bundle).toEqual({
+      url: 'https://github.com/upstash/context7/releases/download/mcpb-v4.4.4/context7.mcpb',
+      sha256: '25cabf3767cc61171e3435c4ce5427e03ffe7ab671cc0e2d5b89e04eef246949',
+      envHints: ['CONTEXT7_API_KEY'],
+    });
+    expect(variant.label).toBe('mcpb · context7.mcpb@4.4.4');
+    expect(variant.fields).toEqual([]);
+    expect(variant.runtime).toBeUndefined();
+  });
+
+  it('refuses mcpb packages it cannot check or run', () => {
+    const server = (pkg: Partial<RegistryPackage>): RegistryServer => ({
+      name: 'x/y',
+      version: '1.0.0',
+      packages: [{ registryType: 'mcpb', identifier: 'https://example.com/y.mcpb', fileSha256: 'a'.repeat(64), transport: { type: 'stdio' }, ...pkg }],
+    });
+    expect(getVariants(server({}))[0].unsupported).toBeUndefined();
+    expect(getVariants(server({ fileSha256: undefined }))[0].unsupported).toMatch(/SHA-256/);
+    expect(getVariants(server({ identifier: 'http://example.com/y.mcpb' }))[0].unsupported).toMatch(/HTTPS/);
+    expect(getVariants(server({ transport: { type: 'streamable-http', url: 'http://localhost:3000' } }))[0].unsupported).toMatch(/stdio/);
   });
 
   it('turns templated values into one field per placeholder', () => {

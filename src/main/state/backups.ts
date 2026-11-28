@@ -41,14 +41,18 @@ export class BackupService {
     return info;
   }
 
-  /** Puts the file back the way it was; the current content is itself backed up first. */
-  async restore(id: string): Promise<BackupInfo> {
+  /**
+   * Puts the file back the way it was; the current content is itself backed up first. `beforeRestore` gets the content
+   * about to be written and can refuse it by throwing, before anything changes.
+   */
+  async restore(id: string, beforeRestore?: (content: string) => Promise<void>): Promise<BackupInfo> {
     const info = (await this.list()).find((b) => b.id === id);
     if (!info) throw new Error('Backup not found');
+    const content = info.existed ? await readTextOrNull(info.backupPath) : null;
+    if (info.existed && content === null) throw new Error('Backup file is missing');
+    if (content !== null) await beforeRestore?.(content);
     await this.create(info.clientId, info.originalPath, await readTextOrNull(info.originalPath));
-    if (info.existed) {
-      const content = await readTextOrNull(info.backupPath);
-      if (content === null) throw new Error('Backup file is missing');
+    if (content !== null) {
       await atomicWrite(info.originalPath, content);
     } else {
       await fs.rm(info.originalPath, { force: true });

@@ -10,6 +10,7 @@ import type {
   RegistryRemote,
   RegistryServer,
 } from './registry';
+import { resolveBundle, type PreparedBundle } from './mcpb';
 import { canPassRegistry, imageRef, registryArgs, registryOfPackage } from './package-registry';
 import type { ServerSpec, Transport } from './types';
 
@@ -154,7 +155,45 @@ function baseRuntime(pkg: RegistryPackage): PackageRuntime | null {
   }
 }
 
+const SHA256 = /^[a-f0-9]{64}$/;
+
+/**
+ * An `mcpb` package: only `identifier`, `fileSha256` and `transport` mean anything. The command and settings come from
+ * the bundle's manifest, so `runtimeHint`, `runtimeArguments`, `packageArguments` and `registryBaseUrl` are ignored, and
+ * `environmentVariables` are only shown as a hint.
+ */
+/** "mcpb · context7.mcpb@4.9.1": the file name, like npm's package name, rather than the whole URL. */
+function bundleLabel(pkg: RegistryPackage): string {
+  let file = pkg.identifier;
+  try {
+    const url = new URL(pkg.identifier);
+    file = decodeURIComponent(url.pathname.split('/').filter(Boolean).pop() ?? '') || url.host;
+  } catch {
+    // not a URL: keep it as it is
+  }
+  return `mcpb · ${file}${pkg.version ? `@${pkg.version}` : ''}`;
+}
+
+function bundlePackageVariant(pkg: RegistryPackage, index: number): InstallVariant {
+  const base: InstallVariant = { ref: { kind: 'package', index }, label: bundleLabel(pkg), transport: 'stdio', fields: [] };
+  const sha256 = pkg.fileSha256?.toLowerCase();
+  if (!sha256 || !SHA256.test(sha256)) {
+    return { ...base, unsupported: "This bundle has no SHA-256 hash in the registry, so Kumi can't check what it downloads." };
+  }
+  let url: URL | undefined;
+  try {
+    url = new URL(pkg.identifier);
+  } catch {
+    // not a URL
+  }
+  if (url?.protocol !== 'https:') return { ...base, unsupported: 'Kumi only downloads bundles over HTTPS.' };
+  if ((pkg.transport?.type ?? 'stdio') !== 'stdio') return { ...base, unsupported: 'Bundles run as local stdio servers; this entry says otherwise.' };
+  const envHints = (pkg.environmentVariables ?? []).map((e) => e.name);
+  return { ...base, bundle: { url: url.href, sha256, ...(envHints.length ? { envHints } : {}) } };
+}
+
 function packageVariant(pkg: RegistryPackage, index: number): InstallVariant {
+  if (pkg.registryType === 'mcpb') return bundlePackageVariant(pkg, index);
   const transport = (pkg.transport?.type ?? 'stdio') as Transport;
   const runtime = packageRuntime(pkg);
   const label = `${pkg.registryType} · ${pkg.identifier}${pkg.version && pkg.registryType !== 'oci' ? `@${pkg.version}` : ''}`;
@@ -246,6 +285,8 @@ export function validateValues(variant: InstallVariant, values: FormValues): Rec
     const v = values[f.id] ?? '';
     if (f.required && v.trim() === '') errors[f.id] = 'Required';
     else if (v !== '' && f.format === 'number' && Number.isNaN(Number(v))) errors[f.id] = 'Must be a number';
+    else if (v !== '' && f.format === 'number' && f.min !== undefined && Number(v) < f.min) errors[f.id] = `Must be at least ${f.min}`;
+    else if (v !== '' && f.format === 'number' && f.max !== undefined && Number(v) > f.max) errors[f.id] = `Must be at most ${f.max}`;
     else if (v !== '' && f.choices?.length && !f.choices.includes(v)) errors[f.id] = `Must be one of: ${f.choices.join(', ')}`;
   }
   return errors;
@@ -253,13 +294,20 @@ export function validateValues(variant: InstallVariant, values: FormValues): Rec
 
 export type ResolveResult = { ok: true; spec: ServerSpec } | { ok: false; error: string };
 
-export function resolveVariant(server: RegistryServer, ref: InstallVariant['ref'], name: string, values: FormValues): ResolveResult {
+/** `bundle` is the downloaded bundle of an `mcpb` package; other variants don't need one. */
+export function resolveVariant(server: RegistryServer, ref: InstallVariant['ref'], name: string, values: FormValues, bundle?: PreparedBundle): ResolveResult {
   if (!SERVER_NAME_PATTERN.test(name)) {
     return { ok: false, error: 'Server name may only contain letters, digits, "-" and "_".' };
   }
   if (ref.kind === 'package') {
     const pkg = server.packages?.[ref.index];
     if (!pkg) return { ok: false, error: 'Unknown package.' };
+    if (pkg.registryType === 'mcpb') {
+      const variant = bundlePackageVariant(pkg, ref.index);
+      if (variant.unsupported) return { ok: false, error: variant.unsupported };
+      if (!bundle || bundle.sha256 !== variant.bundle!.sha256) return { ok: false, error: 'The bundle has not been downloaded yet.' };
+      return resolveBundle(bundle, name, values);
+    }
     return resolvePackage(pkg, ref.index, name, values);
   }
   const remote = server.remotes?.[ref.index];

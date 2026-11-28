@@ -28,6 +28,36 @@ export function FieldInput({ field, value, error, onChange }: { field: InputFiel
         Enabled
       </label>
     );
+  } else if (field.multiple) {
+    const pick = field.format === 'directory' ? api.pickDirectory : field.format === 'filepath' ? api.pickFile : undefined;
+    control = (
+      <div className="space-y-2">
+        <textarea
+          id={id}
+          rows={3}
+          value={value}
+          placeholder={field.placeholder ?? 'One per line'}
+          onChange={(e) => onChange(e.target.value)}
+          spellCheck={false}
+          className={cx(
+            'w-full rounded-lg border border-line bg-panel px-3 py-2 font-mono text-[12px] text-ink focus:border-accent focus:ring-3 focus:ring-accent/12 focus:outline-none',
+            error && 'border-danger',
+          )}
+        />
+        {pick && (
+          <Button
+            size="sm"
+            icon={<FolderOpen className="size-4" />}
+            onClick={async () => {
+              const picked = await pick();
+              if (picked) onChange(value.trim() ? `${value.replace(/\n+$/, '')}\n${picked}` : picked);
+            }}
+          >
+            Add {field.format === 'directory' ? 'folder' : 'file'}
+          </Button>
+        )}
+      </div>
+    );
   } else {
     control = (
       <div className="flex gap-2">
@@ -54,11 +84,11 @@ export function FieldInput({ field, value, error, onChange }: { field: InputFiel
             </button>
           )}
         </div>
-        {field.format === 'filepath' && (
+        {(field.format === 'filepath' || field.format === 'directory') && (
           <Button
             icon={<FolderOpen className="size-4" />}
             onClick={async () => {
-              const picked = await api.pickFile();
+              const picked = field.format === 'directory' ? await api.pickDirectory() : await api.pickFile();
               if (picked) onChange(picked);
             }}
           >
@@ -72,7 +102,7 @@ export function FieldInput({ field, value, error, onChange }: { field: InputFiel
   return (
     <div className="space-y-1">
       <label htmlFor={id} className="flex items-center gap-1.5 text-[13px] font-medium">
-        <span className="font-mono">{field.label}</span>
+        <span className={cx(field.group !== 'config' && 'font-mono')}>{field.label}</span>
         {field.required && <span className="text-spark">*</span>}
         {field.secret && <span className="rounded bg-sunken px-1 text-[10px] font-normal text-muted">secret</span>}
       </label>

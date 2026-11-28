@@ -37,6 +37,8 @@ export interface RegistryPackage {
   registryBaseUrl?: string;
   identifier: string;
   version?: string;
+  /** SHA-256 of the downloaded file. The registry requires it for `mcpb` bundles. */
+  fileSha256?: string;
   runtimeHint?: string;
   transport?: RegistryTransport;
   runtimeArguments?: RegistryArgument[];
@@ -148,11 +150,25 @@ export interface InputField {
   description?: string;
   required: boolean;
   secret: boolean;
-  format: 'string' | 'number' | 'boolean' | 'filepath';
+  format: 'string' | 'number' | 'boolean' | 'filepath' | 'directory';
   default?: string;
   placeholder?: string;
   choices?: string[];
-  group: 'env' | 'argument' | 'header' | 'url';
+  /** Several values, one per line. */
+  multiple?: boolean;
+  /** Bounds for `number` fields. */
+  min?: number;
+  max?: number;
+  /** `config`: a bundle's `user_config` setting, which its manifest can pass as an argument or an env var. */
+  group: 'env' | 'argument' | 'header' | 'url' | 'config';
+}
+
+/** Where an `mcpb` package's bundle comes from. */
+export interface BundleSource {
+  url: string;
+  sha256: string;
+  /** Env vars the registry entry lists. Only a hint: the bundle's manifest decides what it actually uses. */
+  envHints?: string[];
 }
 
 /** One way to install a server: a package run locally, or a hosted remote. */
@@ -162,6 +178,8 @@ export interface InstallVariant {
   transport: 'stdio' | 'streamable-http' | 'sse';
   /** Runtime binary needed on the machine, e.g. "npx". */
   runtime?: string;
+  /** Bundles only: the version of `runtime` the bundle asks for, as a semver range, e.g. ">=20.18.1". */
+  runtimeRange?: string;
   fields: InputField[];
   /** Set when Kumi can't install this variant. */
   unsupported?: string;
@@ -169,4 +187,9 @@ export interface InstallVariant {
   privateRegistry?: PackageRegistry;
   /** Something the install wizard should point out, e.g. credentials left out of the registry URL. */
   warning?: string;
+  /**
+   * `mcpb` packages only: the bundle to download. Its settings and command come from the bundle's manifest, so until
+   * it's downloaded (`bundleVariant` in `mcpb.ts`), `fields` is empty and `runtime` unknown.
+   */
+  bundle?: BundleSource;
 }

@@ -14,6 +14,7 @@ import type {
   PlannedChange,
   ScopeRef,
 } from '@shared/types';
+import { bundleShasIn } from '@shared/mcpb';
 import { maskSpec, secretValues, SERVER_NAME_PATTERN } from '@shared/variants';
 import { ADAPTERS, getAdapter } from '../clients';
 import type { HostEnv } from '../clients/types';
@@ -56,6 +57,9 @@ function validateScope(clientId: ClientId, scope: ScopeRef) {
   }
 }
 
+export const PROJECT_BUNDLE_ERROR =
+  "Bundles can't be installed into a project config: it would point at a folder on this machine, which teammates don't have. Use the global or local scope.";
+
 export class InstallService {
   private plans = new Map<string, StoredPlan>();
 
@@ -72,7 +76,11 @@ export class InstallService {
     const writes = new Map<string, PendingWrite>();
     const changes: PlannedChange[] = [];
     const masked = maskSpec(spec, MASK);
-    const commandMissing = spec.transport === 'stdio' && spec.command && !(await this.env.which(spec.command));
+    // A bundle's config points at the folder Kumi unpacked it to on this machine, which a teammate sharing a
+    // project config doesn't have. PLAN.md §3 lists ways to support it later.
+    const usesBundle = spec.transport === 'stdio' && bundleShasIn(JSON.stringify([spec.command, spec.args])).length > 0;
+    const commandMissing =
+      spec.transport === 'stdio' && spec.command && !(isAbsolute(spec.command) ? await this.env.exists(spec.command) : await this.env.which(spec.command));
 
     for (const { clientId, scope } of request.targets) {
       const adapter = getAdapter(clientId);
@@ -80,6 +88,7 @@ export class InstallService {
       changes.push(change);
       try {
         validateScope(clientId, scope);
+        if (usesBundle && scope.kind === 'project') throw new Error(PROJECT_BUNDLE_ERROR);
         const configPath = adapter.configPath(this.env, scope);
         change.configPath = configPath;
         const pending = writes.get(configPath);

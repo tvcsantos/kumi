@@ -51,6 +51,8 @@ For each app, pick where the server goes:
 | **Project** | Saved in the repo (for example `.mcp.json`), so it's shared with your team. | Claude Code, VS Code, Cursor, OpenCode, Pi |
 | **Local** | This project, only for you. Saved in your user config under the project's path. | Claude Code |
 
+[Bundles](../reference/registry-format#bundles-mcpb) can't use **Project**: their config points at a folder on your machine, which teammates don't have.
+
 Project and Local need a folder: click **Choose folder…**. Kumi remembers the folders you use and reads their configs in [Installed](./installed).
 
 ### Compatibility

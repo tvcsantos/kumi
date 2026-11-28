@@ -166,6 +166,8 @@ export interface RuntimeStatus {
   name: string;
   path: string | null;
   installHint: string;
+  /** `node` and `python3` only: the version of the one on PATH, e.g. "22.11.0". */
+  version?: string;
 }
 
 export interface HealthResult {

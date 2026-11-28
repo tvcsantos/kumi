@@ -116,7 +116,52 @@ Arguments also have:
 
 `runtimeHint` replaces the command. When `runtimeArguments` are given, they replace the defaults (`-y` for npx; `run -i --rm` for Docker if they don't start with `run`). Environment variables are set on the server's process; for Docker they're also passed into the container with `-e`.
 
-Packages with another `registryType` (for example `mcpb`), or whose `transport` isn't `stdio`, are listed but can't be installed yet.
+Packages with another `registryType`, or whose `transport` isn't `stdio`, are listed but can't be installed yet. `mcpb` bundles work differently; see below.
+
+## Bundles (`mcpb`)
+
+An [MCP Bundle](https://github.com/modelcontextprotocol/mcpb) is a zip with the server's code and a `manifest.json` that says how to run it and which settings it takes. For a bundle, only these package fields are used:
+
+| Field | Use |
+|---|---|
+| `registryType` | `mcpb` |
+| `identifier` | The bundle's download URL. Must be `https`. |
+| `fileSha256` | Required. Kumi refuses a download that doesn't match it. |
+| `transport` | Must be `stdio` (or left out). |
+
+```json
+{
+  "registryType": "mcpb",
+  "identifier": "https://github.com/acme/files-mcp/releases/download/v1.2.0/files.mcpb",
+  "fileSha256": "fe333e598595000ae021bd27117db32ec69af6987f507ba7a63c90638ff633ce",
+  "transport": { "type": "stdio" }
+}
+```
+
+The manifest decides the command and the settings, so `runtimeHint`, `runtimeArguments`, `packageArguments`, `registryBaseUrl` and `version` are ignored. `environmentVariables` are shown on the detail page as a hint, but the form comes from the manifest's `user_config`.
+
+### What Kumi does with a bundle
+
+1. Downloads it when you pick the variant in the install wizard, checks the SHA-256, and unpacks it into `~/.kumi/bundles/<sha256>/` (see [Data directory](./data-directory#bundles)). A bundle already there isn't downloaded again.
+2. Builds the form from `user_config`: `string` (masked when `sensitive`), `number` (with `min` / `max`), `boolean`, `file` and `directory` (with a picker; one per line when `multiple`). Defaults can use `${HOME}`, `${DESKTOP}`, `${DOCUMENTS}` and `${DOWNLOADS}`.
+3. Writes the manifest's `mcp_config` into each app's config, with the `platform_overrides` for your OS applied (an override's `command` and `args` replace the base ones, its `env` is added). Variables are filled in:
+
+| Variable | Becomes |
+|---|---|
+| `${__dirname}` | The folder the bundle was unpacked to |
+| `${HOME}`, `${DESKTOP}`, `${DOCUMENTS}`, `${DOWNLOADS}` | Your folders |
+| `${pathSeparator}`, `${/}` | `/`, or `\` on Windows |
+| `${user_config.<key>}` | The value you entered |
+
+An argument that is exactly a `multiple` setting becomes one argument per value. Inside a longer string or an env var, the values are joined with `:` (`;` on Windows). An argument or env var whose optional setting is empty is left out.
+
+A `uv` bundle without `mcp_config` runs with `uv run --directory <bundle> <entry_point>`. On Windows, `.exe` is added to a bundled program's path. A bundle whose `compatibility.platforms` leaves out your OS can't be installed. Manifests from before MCPB (with `dxt_version`) are read too.
+
+Bundles install into global and local scopes only. The config points at the bundle's folder on your machine, so it can't go in a project config shared through the repo: a teammate has no such folder, and their Kumi doesn't know to download it.
+
+When the bundle asks for a version in `compatibility.runtimes` (`node` or `python`), the install wizard shows it, and warns if the `node` or `python3` on your PATH is older. It only warns: with a version manager such as nvm, fnm or pyenv, your apps may run a different version than the one Kumi finds.
+
+Not covered: bundle signatures.
 
 ## Packages from a private registry
 

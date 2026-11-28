@@ -7,13 +7,16 @@ import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeTheme, shell } fr
 import { z } from 'zod';
 import { ALLOWED_WHILE_UPDATE_REQUIRED, API_METHODS, channel, type IpcResult, type KumiApi } from '@shared/api';
 import { normalizePattern, patternError } from '@shared/private-network';
+import { bundleShasIn } from '@shared/mcpb';
 import { CLIENT_IDS, type ClientInfo } from '@shared/types';
+import type { BundleStore } from './bundles/store';
 import type { Catalog } from './catalog/catalog';
 import { ADAPTERS } from './clients';
 import type { HostEnv } from './clients/types';
 import { testServer } from './health/check';
 import { logFile } from './log';
 import type { InstallService } from './install/service';
+import { log } from './log';
 import { checkRuntimes } from './runtime/detect';
 import type { SettingsStore } from './settings';
 import type { BackupService } from './state/backups';
@@ -88,6 +91,7 @@ export interface Services {
   dataDir: string;
   catalog: Catalog;
   installer: InstallService;
+  bundles: BundleStore;
   state: StateStore;
   backups: BackupService;
   settings: SettingsStore;
@@ -95,6 +99,23 @@ export interface Services {
 }
 
 type Handlers = { [K in keyof KumiApi]: (...args: unknown[]) => ReturnType<KumiApi[K]> };
+
+/**
+ * Deletes unpacked bundles that no config points at any more: after an install replaced one, an uninstall, a restore.
+ * Kumi's records alone aren't enough, since a restored backup can bring back an entry Kumi has no record of.
+ */
+export async function cleanupBundles(s: Pick<Services, 'installer' | 'bundles'>): Promise<void> {
+  try {
+    const view = await s.installer.listInstalled();
+    const used = bundleShasIn(view.entries.map((e) => JSON.stringify(e.spec)).join('\n'));
+    // A config Kumi couldn't read may still point at bundles; keep everything rather than guess.
+    if (view.errors.length) return;
+    const removed = await s.bundles.cleanup(used);
+    if (removed.length) void log('info', 'bundles', `Removed ${removed.length} unused bundle folder(s)`);
+  } catch (e) {
+    void log('warn', 'bundles', `Bundle cleanup failed: ${(e as Error).message}`);
+  }
+}
 
 function createHandlers(s: Services): Handlers {
   /** Only paths Kumi manages may be opened: client configs and our backups. */
@@ -153,12 +174,26 @@ function createHandlers(s: Services): Handlers {
       for (const t of request.targets) if (t.scope.projectDir) await s.state.addProject(t.scope.projectDir);
       return s.installer.plan(request);
     },
-    installApply: (id) => s.installer.apply(z.uuid().parse(id)),
+    bundlePrepare: (url, sha256) => s.bundles.prepare(z.url({ protocol: /^https$/ }).max(4096).parse(url), z.string().regex(/^[a-fA-F0-9]{64}$/).parse(sha256)),
+    installApply: async (id) => {
+      const results = await s.installer.apply(z.uuid().parse(id));
+      void cleanupBundles(s);
+      return results;
+    },
     installedList: () => s.installer.listInstalled(),
     installedValues: (id) => s.installer.recordValues(z.uuid().parse(id)),
-    uninstall: (target, force) => s.installer.uninstall(uninstallTarget.parse(target), z.boolean().optional().parse(force)),
+    uninstall: async (target, force) => {
+      const result = await s.installer.uninstall(uninstallTarget.parse(target), z.boolean().optional().parse(force));
+      void cleanupBundles(s);
+      return result;
+    },
     backupsList: async () => (await s.backups.list()).reverse(),
-    backupsRestore: (id) => s.backups.restore(z.uuid().parse(id)),
+    backupsRestore: async (id) => {
+      // A bundle the backup points at may have been cleaned up since: download it again first, or don't restore.
+      const info = await s.backups.restore(z.uuid().parse(id), (content) => s.bundles.ensure(bundleShasIn(content)));
+      void cleanupBundles(s);
+      return info;
+    },
     projectsAdd: (dir) => s.state.addProject(absPath.parse(dir)),
     projectsRemove: (dir) => s.state.removeProject(absPath.parse(dir)),
     healthTest: async (spec, opts) => {

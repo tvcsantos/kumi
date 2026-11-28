@@ -64,4 +64,6 @@ Before every write, Kumi copies the config file. **Settings → Backups** lists 
 
 If Kumi created a file that didn't exist before, its backup is marked *didn't exist*, and restoring it deletes the file.
 
+If the backup uses an [MCP Bundle](../reference/registry-format#bundles-mcpb) that Kumi has cleaned up since, Kumi downloads it again before restoring. If it can't, nothing is restored, and the error says why.
+
 Kumi keeps the last 20 backups of each file. See [Data directory](../reference/data-directory) for where they're stored.

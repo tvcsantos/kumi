@@ -11,6 +11,9 @@ Your apps' config files are never stored here. Kumi edits them where they are.
 ├─ state.json          what Kumi installed, where, and the project folders it knows
 ├─ cache/
 │  └─ registry.json    cached registry responses
+├─ bundles/
+│  ├─ index.json       where each bundle was downloaded from
+│  └─ <sha256>/        one unpacked MCP Bundle, which app configs point at
 └─ backups/
    ├─ index.json       list of backups
    └─ <app>/           one copy of a config file per write
@@ -70,6 +73,12 @@ Deleting a record doesn't touch your config; Kumi just treats that entry as adde
 ## cache/registry.json
 
 Registry responses, keyed by URL. An entry is fresh for ten minutes; older entries are used only when the registry can't be reached. The cache keeps the 500 most recent responses. It's safe to delete.
+
+## bundles/
+
+[MCP Bundles](./registry-format#bundles-mcpb) Kumi downloaded, one folder per bundle, named by its SHA-256. Your apps run the server from here, so don't delete a folder an installed server uses. Installing the same bundle into several apps uses one folder; an update gets a new one.
+
+Kumi deletes folders no config points at any more: when it starts, and after an install, an uninstall or a restore. `index.json` keeps each bundle's download URL even after its folder is gone, so restoring an older backup can download it again.
 
 ## backups/
 

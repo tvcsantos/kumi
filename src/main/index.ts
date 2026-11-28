@@ -1,13 +1,14 @@
 import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { delimiter, join, sep } from 'node:path';
 import { app, BrowserWindow, nativeTheme, session, shell } from 'electron';
+import { BundleStore } from './bundles/store';
 import { Catalog } from './catalog/catalog';
 import { HttpCache } from './catalog/http';
 import { RegistryStore } from './catalog/sources';
 import { createHostEnv, loadShellEnv } from './host';
 import { InstallService } from './install/service';
-import { registerIpc, type Services } from './ipc';
+import { cleanupBundles, registerIpc, type Services } from './ipc';
 import { initLog, log } from './log';
 import { createSafeStorageBox } from './secrets/secrets';
 import { SettingsStore } from './settings';
@@ -86,6 +87,20 @@ async function startServices(): Promise<Services> {
   const box = await createSafeStorageBox();
   const catalog = new Catalog(new RegistryStore(dataDir, box), new HttpCache(dataDir));
   const installer = new InstallService(env, state, backups, box);
+  const bundles = new BundleStore({
+    dataDir,
+    host: () => ({
+      platform: process.platform,
+      home: homedir(),
+      desktop: app.getPath('desktop'),
+      documents: app.getPath('documents'),
+      downloads: app.getPath('downloads'),
+      pathSeparator: sep,
+      pathDelimiter: delimiter,
+    }),
+  });
+  // Bundles downloaded for an install that never happened, or left behind by an older Kumi.
+  void cleanupBundles({ installer, bundles });
   const installKind = detectInstallKind({
     platform: process.platform,
     isPackaged: app.isPackaged,
@@ -108,7 +123,7 @@ async function startServices(): Promise<Services> {
   });
   await updates.load();
   updates.start();
-  return { env, dataDir, catalog, installer, state, backups, settings, updates };
+  return { env, dataDir, catalog, installer, bundles, state, backups, settings, updates };
 }
 
 app.whenReady().then(async () => {

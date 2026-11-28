@@ -1,5 +1,6 @@
 // The renderer ↔ main contract. The preload script exposes exactly this as `window.kumi`.
 
+import type { PreparedBundle } from './mcpb';
 import type { PrivateNetworkPattern } from './private-network';
 import type { CatalogPage, RegistryDraft, RegistryInfo, RegistryPatch, RegistryServer } from './registry';
 import type {
@@ -128,6 +129,8 @@ export interface KumiApi {
   clientsList(): Promise<ClientInfo[]>;
   /** Looks up npx, uvx & co. `refreshPath` re-reads PATH first when one is missing, to catch a fresh install. */
   runtimesCheck(opts?: { refreshPath?: boolean }): Promise<RuntimeStatus[]>;
+  /** Downloads an `mcpb` bundle, checks its hash and unpacks it; reuses it when it's already on disk. */
+  bundlePrepare(url: string, sha256: string): Promise<PreparedBundle>;
   installPlan(request: InstallRequest): Promise<InstallPlan>;
   installApply(planId: string): Promise<ApplyResult[]>;
   installedList(): Promise<InstalledView>;
@@ -174,6 +177,7 @@ export const API_METHODS = [
   'registriesRefresh',
   'clientsList',
   'runtimesCheck',
+  'bundlePrepare',
   'installPlan',
   'installApply',
   'installedList',

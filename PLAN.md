@@ -81,6 +81,19 @@ Each entry is a `server.json` with:
 
 **The install form is generated from these fields** (`src/shared/variants.ts`), so no hand-written forms are needed for most servers. Package versions are pinned (`pkg@1.2.3`).
 
+### MCP Bundles (`mcpb`)
+- The registry entry only names the bundle: `identifier` (an https URL), `fileSha256` (required, checked before unpacking) and `transport: stdio`. The bundle's `manifest.json` (spec: `modelcontextprotocol/mcpb`, `MANIFEST.md`) decides the command and settings, so `runtimeHint`, `runtimeArguments`, `packageArguments`, `registryBaseUrl` and `version` are ignored; `environmentVariables` are only a hint on the detail page.
+- `src/main/bundles/store.ts` downloads (any https host, size-capped), checks the hash, unpacks with `fflate` (refusing entries that escape the folder; zip-bomb caps) into `~/.kumi/bundles/<sha256>/`, and keeps `index.json` (hash → URL). The wizard calls `bundlePrepare` when the variant is picked.
+- `src/shared/mcpb.ts` (pure): `user_config` → form fields, and manifest + values + folder → an ordinary stdio `ServerSpec`, so adapters, diff, backups and Test connection are unchanged. Unspecified in the spec, so decided here: platform overrides replace `command`/`args` and add to `env`; an empty optional setting drops its argument or env var; a `multiple` value spreads into arguments, and is joined with the path delimiter elsewhere.
+- Cleanup: folders no config points at are deleted at startup and after install, uninstall and restore (configs are scanned, not records, since a restore can bring back an entry Kumi has no record of; folders prepared this session are kept). Restoring a backup downloads missing bundles again from the index, or refuses.
+- Runtime versions: `compatibility.runtimes` (node, python) is shown in the wizard, with a warning when the `node` / `python3` on Kumi's PATH is out of range (`src/shared/semver.ts`). Only a warning: with nvm, fnm, pyenv & co. several versions coexist, and each app resolves `node` its own way (the terminal's active version for CLIs, the login shell for editors, a minimal PATH for Dock-launched apps), so Kumi's PATH proves nothing either way.
+- Later, **pin a matching runtime**: find installed versions where version managers keep them (nvm `~/.nvm/versions/node/*`, fnm `$FNM_DIR` or `~/.local/share/fnm/node-versions/*`, Volta, asdf, mise; pyenv for Python), offer "Use Node v22.11.0 from nvm" in the wizard, and write that absolute path as the command. Fixes GUI apps that find no `node` at all too. Costs: uninstalling that version breaks the server (Installed should detect it and offer to re-pin), fnm's `fnm_multishells` paths are temporary (use the install dir), one scanner per manager. Opt-in, never silent.
+- **No project scope.** The config holds an absolute path into `~/.kumi/bundles/`, which a teammate (or your other machine) doesn't have, and nothing tells their side to download it. MCPB doesn't hit this: the host app (e.g. Claude Desktop) unpacks the bundle into its own folder and fills in `${__dirname}` when it starts the server, so a resolved path is never written to a shared file; the registry's portable unit is the reference (URL + hash). So the wizard disables Project for bundles and `InstallService.plan` refuses it (`PROJECT_BUNDLE_ERROR`). Ways to support it later:
+  - **Launcher (preferred):** the config holds the reference, e.g. `npx -y kumi-run mcpb <url> --sha256 <hash>`, and the launcher downloads, checks, caches and runs the bundle on whichever machine starts it, like an npm package. Settings come from env vars or the app's `${VAR}` expansion, not from the shared file. Fits the `kumi-run` shim (Phase 3), but is a package to publish and maintain.
+  - **Allow with a warning:** "teammates need to install it with Kumi too". Cheap, but the shared config is broken for everyone else until they do.
+  - **Vendor into the repo:** unpack under e.g. `<repo>/.kumi/bundles/` and use a relative path. Portable, but commits the server's code to the repo, and relative paths depend on the working directory each app starts servers in, which differs.
+- Not yet: signature verification, Claude Desktop's own bundle installer.
+
 ### Curated overlay
 - Today: `src/shared/featured.ts`, shipped with the app (featured servers and their categories).
 - Planned: a JSON file in a GitHub repo, fetched and cached, with icons, screenshots, a "verified" badge, better descriptions, **overrides** for incomplete `server.json` (missing env vars, wrong runtime hints), per-app compatibility notes, and a denylist.
@@ -258,7 +271,7 @@ A package can come from a registry only reachable inside a company (Artifactory,
 3. **Badge.** *private registry*, separate from *private network*: the download needs the registry, but the server may run off the VPN once it's cached. The registry host is matched against Settings → Private networks for the VPN label. Shown on Discover, the detail page (per variant), Installed (read from the config's flags, so it works for servers Kumi didn't install) and the install wizard.
 4. **Test.** Download failures are read from the package manager's output (npm, uv, docker, dnx): *unreachable* (amber, VPN hint), *sign-in needed* (`401`, `403`, and a `404` for the package itself on a private registry, which is what most answer when you're not signed in), *doesn't mirror npmjs* (the package was found but a dependency `404`s on the private registry), *certificate* (points to the OS certificate trust). This works for public registries too, minus the sign-in advice.
 
-Not covered: mirror or proxy settings, editing `.npmrc` and other tool config, `mcpb` packages, a default registry for a whole source.
+Not covered: mirror or proxy settings, editing `.npmrc` and other tool config, a default registry for a whole source.
 
 ---
 
@@ -356,6 +369,7 @@ kumi/
 - [x] Release pipeline (GitHub Releases) and Homebrew cask (bumped by hand).
 - [x] Docs site (VitePress on GitHub Pages).
 - [x] Log file; OS certificate trust.
+- [x] MCP Bundles (`mcpb`, §3): download and hash check, form from the manifest, cleanup, restore.
 - [ ] Private networks (§8): failure causes, Settings patterns, registry `private` flag.
 - [ ] Private package registries (§8): registry flags in commands, badge, download failures in Test.
 - [ ] Warn when Claude Code is running; watch config files for external changes.
@@ -364,6 +378,9 @@ kumi/
 
 ### Phase 3: Power features
 - [ ] `kumi-run` secure-launch shim with OS keychain.
+- [ ] MCP Bundle signatures.
+- [ ] Bundles: pin a Node/Python version found in nvm, fnm, Volta, asdf, mise or pyenv (§3).
+- [ ] Bundles in project scope, through a `kumi-run mcpb` launcher (§3).
 - [ ] Client-native secrets for Codex (`env_vars`, `bearer_token_env_var`) and `.mcp.json` (`${VAR}`).
 - [ ] More apps: done Junie, Air in JetBrains IDEs, Zed. Next: Windsurf, Cline, Gemini CLI, JetBrains/Visual Studio Copilot, Continue.
 - [ ] Profiles / bundles ("Web dev pack": install N servers at once) and export/import of a setup.

@@ -44,11 +44,14 @@ Many servers can run in more than one way. Kumi lists each one as a **variant**:
 | `pypi · <package>@<version>` | `uvx <package>@<version>` | uv |
 | `oci · <image>` | `docker run -i --rm <image>` | Docker |
 | `nuget · <package>@<version>` | `dnx <package>@<version> --yes` | .NET 10 SDK |
+| `mcpb · <file>@<version>` | the command in the bundle's manifest, e.g. `node <bundle>/server/index.js` | what the bundle runs on: Node.js, Python or uv, or nothing for a bundled program |
 | `Hosted · <host>` | nothing local; your app connects to the URL | — |
 
 Kumi pins the version the registry lists, so a server doesn't change under you. If a package names its own runtime (`runtimeHint`), Kumi uses that instead.
 
-Each variant lists the settings it needs. A variant marked **not supported** can't be installed by Kumi yet, for example an `mcpb` package, or a package that runs as a local HTTP server.
+Each variant lists the settings it needs. A variant marked **not supported** can't be installed by Kumi yet, for example a package that runs as a local HTTP server.
+
+An `mcpb` variant is an [MCP Bundle](https://github.com/modelcontextprotocol/mcpb): a zip with the server's code and a manifest that says how to run it and which settings it takes. Its settings aren't known until the bundle is downloaded, so the detail page doesn't list them; the install wizard downloads the bundle when you pick it, checks it against the hash in the registry, and builds the form from its manifest. See [Bundles](../reference/registry-format#bundles-mcpb).
 
 Click **Install** to start the [install wizard](./install).
 

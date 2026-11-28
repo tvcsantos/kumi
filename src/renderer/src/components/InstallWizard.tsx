@@ -1,8 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, Boxes, Check, CheckCircle2, FileText, FolderOpen, LogIn, Network, PlugZap, RotateCcw, WifiOff, XCircle } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { AlertTriangle, Boxes, Check, CheckCircle2, FileText, FolderOpen, LogIn, Network, Package, PlugZap, RotateCcw, WifiOff, XCircle } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { bundleVariant } from '@shared/mcpb';
+import { satisfies } from '@shared/semver';
 import { canPassRegistry, loginAdvice, loginCommand, type PackageRegistry } from '@shared/package-registry';
 import { privateNetworkFor, registryPrivateNetwork, type PrivateNetwork } from '@shared/private-network';
+import type { PreparedBundle } from '@shared/mcpb';
 import type { RegistryServer } from '@shared/registry';
 import type {
   ApplyResult,
@@ -246,6 +249,41 @@ function compat(client: ClientInfo, spec: ServerSpec | undefined): 'ok' | 'bridg
   return 'unsupported';
 }
 
+/** Downloading an `mcpb` bundle, why it failed, or which bundle the settings come from. */
+function BundleStatus({ bundle, needs }: { bundle: ReturnType<typeof useQuery<PreparedBundle>>; needs?: string }) {
+  if (bundle.isFetching && !bundle.data) return <Spinner label="Downloading the bundle and checking its hash…" />;
+  if (bundle.error) {
+    return (
+      <Callout tone="danger" icon={<XCircle className="size-4" />}>
+        <div className="font-medium">Couldn't get the bundle</div>
+        <div className="break-words">{sentence(errorMessage(bundle.error))}</div>
+        <div className="mt-2">
+          <Button size="sm" icon={<RotateCcw className="size-3.5" />} onClick={() => void bundle.refetch()}>
+            Try again
+          </Button>
+        </div>
+      </Callout>
+    );
+  }
+  if (!bundle.data) return null;
+  const { manifest } = bundle.data;
+  return (
+    <p className="flex items-center gap-1.5 text-xs text-muted">
+      <Package className="size-3.5 shrink-0" />
+      {/* One span, so the flex gap doesn't split the sentence. */}
+      <span>
+        Bundle {manifest.display_name ?? manifest.name} {manifest.version}, checked against the registry's hash.
+        {needs && (
+          <>
+            {' '}
+            Needs <span className="font-mono">{needs}</span>.
+          </>
+        )}
+      </span>
+    </p>
+  );
+}
+
 export function InstallWizard({ source, onClose, onViewInstalled }: { source: WizardSource; onClose: () => void; onViewInstalled: () => void }) {
   const queryClient = useQueryClient();
   const clients = useQuery({ queryKey: ['clients'], queryFn: api.clientsList });
@@ -266,12 +304,26 @@ export function InstallWizard({ source, onClose, onViewInstalled }: { source: Wi
     const installed = runtimes.data && new Set(runtimes.data.filter((r) => r.path).map((r) => r.name));
     return i >= 0 ? i : Math.max(0, variants.indexOf(defaultVariant(variants, installed)!));
   });
-  const variant = variants[variantIdx];
+  const listed = variants[variantIdx];
+  // An `mcpb` variant gets its settings and command from the bundle, so it's downloaded as soon as it's picked.
+  const bundleSource = listed && !listed.unsupported ? listed.bundle : undefined;
+  const bundle = useQuery({
+    queryKey: ['bundle', bundleSource?.sha256],
+    queryFn: () => api.bundlePrepare(bundleSource!.url, bundleSource!.sha256),
+    enabled: !!bundleSource,
+    staleTime: Infinity,
+    retry: false,
+  });
+  const variant = useMemo(() => (listed?.bundle && bundle.data ? bundleVariant(listed, bundle.data) : listed), [listed, bundle.data]);
   const [name, setName] = useState(() => (source.kind === 'registry' ? (source.edit?.name ?? suggestName(source.server)) : ''));
   const [values, setValues] = useState<FormValues>(() =>
     source.kind === 'registry' && source.edit ? { ...(variant ? initialValues(variant) : {}), ...source.edit.values } : variant ? initialValues(variant) : {},
   );
   const [showErrors, setShowErrors] = useState(false);
+  // The bundle's defaults are only known once it's downloaded; values already set (an edit's) win.
+  useEffect(() => {
+    if (variant?.bundle && bundle.data) setValues((prev) => ({ ...initialValues(variant), ...prev }));
+  }, [bundle.data, variantIdx]); // only when a bundle arrives, not on every edit
 
   // Custom server state
   const [custom, setCustom] = useState<CustomForm>(() => customFormFromSpec(source.kind === 'custom' ? source.spec : undefined));
@@ -292,12 +344,15 @@ export function InstallWizard({ source, onClose, onViewInstalled }: { source: Wi
   const resolved = useMemo((): { spec?: ServerSpec; error?: string } => {
     if (source.kind === 'custom') return specFromCustomForm(custom);
     if (!variant || variant.unsupported) return { error: variant?.unsupported ?? 'No installable variant.' };
-    const res = resolveVariant(source.server, variant.ref, name, values);
+    if (variant.bundle && !bundle.data) return { error: bundle.error ? errorMessage(bundle.error) : 'Downloading the bundle…' };
+    const res = resolveVariant(source.server, variant.ref, name, values, bundle.data);
     return res.ok ? { spec: res.spec } : { error: res.error };
-  }, [source, custom, variant, name, values]);
+  }, [source, custom, variant, name, values, bundle.data, bundle.error]);
   const spec = resolved.spec;
   const hasSecrets = !!(spec?.secretEnv?.length || spec?.secretHeaders?.length);
   const runtime = variant?.runtime ? runtimes.data?.find((r) => r.name === variant.runtime) : undefined;
+  // Only the runtime on Kumi's PATH is known; with nvm, fnm or pyenv, apps may run another one. So this only warns.
+  const runtimeTooOld = !!(runtime?.version && variant?.runtimeRange && satisfies(runtime.version, variant.runtimeRange) === false);
   // Apps that reach hosted servers through mcp-remote need npx for them, even though nothing else runs locally.
   const npx = runtimes.data?.find((r) => r.name === 'npx');
   const bridgeMissingNpx = !!npx && !npx.path && !!clients.data?.some((c) => compat(c, spec) === 'bridged');
@@ -311,6 +366,9 @@ export function InstallWizard({ source, onClose, onViewInstalled }: { source: Wi
     .sort(([a], [b]) => clientOrder(a) - clientOrder(b))
     .map(([clientId, t]) => ({ clientId: clientId as ClientId, scope: { kind: t!.scope, ...(t!.scope !== 'user' ? { projectDir: t!.projectDir } : {}) } }));
   const targetsMissingDir = selectedTargets.some((t) => t.scope.kind !== 'user' && !t.scope.projectDir);
+  // A bundle's config points at a folder on this machine, so it can't go in a config shared through the repo.
+  const isBundle = !!variant?.bundle;
+  const bundleInProject = isBundle && selectedTargets.some((t) => t.scope.kind === 'project');
 
   const test = useMutation({ mutationFn: (s: ServerSpec) => api.healthTest(s, { privateNetwork: registryFlag }), onSuccess: setHealth, onError: (e) => setHealth({ ok: false, tools: [], error: errorMessage(e), durationMs: 0 }) });
 
@@ -408,7 +466,12 @@ export function InstallWizard({ source, onClose, onViewInstalled }: { source: Wi
           Back
         </Button>
         <div className="flex-1" />
-        <Button variant="primary" disabled={!selectedTargets.length || targetsMissingDir} loading={planMutation.isPending} onClick={() => planMutation.mutate(overwrite)}>
+        <Button
+          variant="primary"
+          disabled={!selectedTargets.length || targetsMissingDir || bundleInProject}
+          loading={planMutation.isPending}
+          onClick={() => planMutation.mutate(overwrite)}
+        >
           Review changes
         </Button>
       </>
@@ -473,7 +536,9 @@ export function InstallWizard({ source, onClose, onViewInstalled }: { source: Wi
                           i === variantIdx ? 'border-accent bg-accent-soft/50 ring-1 ring-accent' : 'border-line hover:bg-sunken',
                         )}
                       >
-                        <div className="truncate font-mono text-[12px]">{v.label}</div>
+                        <div className="truncate font-mono text-[12px]" title={v.bundle?.url}>
+                          {v.label}
+                        </div>
                         <div className="mt-1.5 flex flex-wrap gap-1">
                           <Badge>{v.ref.kind === 'remote' ? 'hosted' : 'runs locally'}</Badge>
                           <Badge>{v.transport}</Badge>
@@ -489,6 +554,20 @@ export function InstallWizard({ source, onClose, onViewInstalled }: { source: Wi
               {runtime && !runtime.path && (
                 <Callout tone="warn" icon={<AlertTriangle className="size-4" />}>
                   <span className="font-mono">{runtime.name}</span> wasn't found on this machine. {runtime.installHint}
+                </Callout>
+              )}
+
+              {variant?.bundle && <BundleStatus bundle={bundle} needs={variant.runtime && variant.runtimeRange ? `${variant.runtime} ${variant.runtimeRange}` : undefined} />}
+              {runtimeTooOld && (
+                <Callout tone="warn" icon={<AlertTriangle className="size-4" />}>
+                  The <span className="font-mono">{runtime!.name}</span> on your PATH is {runtime!.version}; this bundle needs{' '}
+                  <span className="font-mono">{variant!.runtimeRange}</span>. If you switch versions with a version manager (nvm, fnm, pyenv…), make sure the one your
+                  apps use is new enough.
+                </Callout>
+              )}
+              {variant?.bundle && variant.unsupported && (
+                <Callout tone="warn" icon={<AlertTriangle className="size-4" />}>
+                  {variant.unsupported}
                 </Callout>
               )}
 
@@ -510,7 +589,7 @@ export function InstallWizard({ source, onClose, onViewInstalled }: { source: Wi
                       />
                     ))}
                   </div>
-                ) : (
+                ) : variant?.bundle && !bundle.data ? null : (
                   <p className="text-sm text-muted">This server needs no settings.</p>
                 )}
               </section>
@@ -519,7 +598,7 @@ export function InstallWizard({ source, onClose, onViewInstalled }: { source: Wi
             <CustomServerForm form={custom} onChange={setCustom} nameLocked={isEdit} />
           )}
 
-          {showErrors && resolved.error && Object.keys(fieldErrors).length === 0 && (
+          {showErrors && resolved.error && Object.keys(fieldErrors).length === 0 && !(variant?.bundle && !bundle.data) && (
             <Callout tone="danger" icon={<XCircle className="size-4" />}>
               {resolved.error}
             </Callout>
@@ -559,7 +638,7 @@ export function InstallWizard({ source, onClose, onViewInstalled }: { source: Wi
           {clients.isLoading && <Spinner label="Looking for installed apps…" />}
           <div className="divide-y divide-line overflow-hidden rounded-xl border border-line">
             {clients.data?.map((c) => {
-              const t = targets[c.id] ?? { selected: false, scope: c.scopes[0] };
+              const t = targets[c.id] ?? { selected: false, scope: c.scopes.find((s) => !(isBundle && s === 'project')) ?? c.scopes[0] };
               const support = compat(c, spec);
               const update = (patch: Partial<TargetState>) => setTargets((prev) => ({ ...prev, [c.id]: { ...t, ...patch } }));
               return (
@@ -600,8 +679,9 @@ export function InstallWizard({ source, onClose, onViewInstalled }: { source: Wi
                           title={SCOPE_TEXT[t.scope]}
                         >
                           {c.scopes.map((s) => (
-                            <option key={s} value={s}>
+                            <option key={s} value={s} disabled={isBundle && s === 'project'}>
                               {SCOPE_TEXT[s]}
+                              {isBundle && s === 'project' ? ' (not for bundles)' : ''}
                             </option>
                           ))}
                         </select>
@@ -625,6 +705,16 @@ export function InstallWizard({ source, onClose, onViewInstalled }: { source: Wi
               );
             })}
           </div>
+
+          {isBundle && clients.data?.some((c) => c.scopes.includes('project')) && (
+            <p className="flex items-start gap-1.5 text-xs text-muted">
+              <Package className="mt-px size-3.5 shrink-0" />
+              <span>
+                Bundles can't go in a project config: it would point at the folder Kumi unpacked the bundle to on this machine, which teammates don't have.
+                Use the global or local scope.
+              </span>
+            </p>
+          )}
 
           {hasSecrets && (
             <section className="space-y-2">

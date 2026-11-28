@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { InstallRequest, ServerSpec } from '@shared/types';
 import type { HostEnv } from '../src/main/clients/types';
-import { InstallService } from '../src/main/install/service';
+import { InstallService, PROJECT_BUNDLE_ERROR } from '../src/main/install/service';
 import { BackupService } from '../src/main/state/backups';
 import { StateStore } from '../src/main/state/store';
 import type { SecretBox } from '../src/main/secrets/secrets';
@@ -147,6 +147,22 @@ describe('InstallService', () => {
     expect(json.mcpServers.context7).toBeDefined();
     expect(json.projects[projectDir].mcpServers.context7).toBeDefined();
     expect((await service.listInstalled()).entries.filter((e) => e.record)).toHaveLength(2);
+  });
+
+  it('keeps bundles out of project configs', async () => {
+    const projectDir = join(root, 'repo');
+    const bundled: ServerSpec = { name: 'files', transport: 'stdio', command: 'node', args: [join(root, 'data', 'bundles', 'a'.repeat(64), 'index.js')] };
+    const plan = await service.plan(
+      request({
+        spec: bundled,
+        targets: [
+          { clientId: 'claude-code', scope: { kind: 'project', projectDir } },
+          { clientId: 'claude-code', scope: { kind: 'local', projectDir } },
+        ],
+      }),
+    );
+    expect(plan.changes[0].error).toBe(PROJECT_BUNDLE_ERROR);
+    expect(plan.changes[1].error).toBeUndefined();
   });
 
   it('backs up before writing and restores', async () => {

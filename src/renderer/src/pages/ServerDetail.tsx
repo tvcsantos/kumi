@@ -85,7 +85,9 @@ export function ServerDetail({ initial, onBack, onInstall }: { initial: CatalogI
         <div className="grid gap-3 lg:grid-cols-2">
           {variants.map((v) => (
             <div key={`${v.ref.kind}-${v.ref.index}`} className="rounded-2xl border border-line bg-panel p-4">
-              <div className="truncate font-mono text-[13px]">{v.label}</div>
+              <div className="truncate font-mono text-[13px]" title={v.bundle?.url}>
+                {v.label}
+              </div>
               <div className="mt-2 flex flex-wrap gap-1">
                 <Badge>{v.ref.kind === 'remote' ? 'hosted' : 'runs locally'}</Badge>
                 <Badge>{v.transport}</Badge>
@@ -96,6 +98,17 @@ export function ServerDetail({ initial, onBack, onInstall }: { initial: CatalogI
               </div>
               {v.unsupported ? (
                 <p className="mt-3 text-xs text-muted">{v.unsupported}</p>
+              ) : v.bundle ? (
+                <p className="mt-3 text-xs text-muted">
+                  A bundle Kumi downloads from {new URL(v.bundle.url).host} and checks against the registry's hash. Its settings appear when you
+                  install it.
+                  {v.bundle.envHints?.length ? (
+                    <>
+                      {' '}
+                      The registry mentions <span className="font-mono">{v.bundle.envHints.join(', ')}</span>.
+                    </>
+                  ) : null}
+                </p>
               ) : v.fields.length ? (
                 <ul className="mt-3 space-y-1.5">
                   {v.fields.map((f) => (
