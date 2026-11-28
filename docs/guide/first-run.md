@@ -18,7 +18,7 @@ You can change all of this later in **Settings → Registries**. See [Registries
 
 ## Find your apps
 
-Kumi looks for the AI apps it supports and marks the ones it finds as *detected*. An app counts as detected when its command is on your `PATH` (for example `claude`, `code`, `cursor`, `codex`, `copilot`, `opencode`, `pi`) or its config folder exists.
+Kumi looks for the AI apps it supports and marks the ones it finds as *detected*. An app counts as detected when its command is on your `PATH` (for example `claude`, `code`, `cursor`, `codex`, `copilot`, `opencode`, `pi`, `hermes`) or its config folder exists.
 
 **Settings → Apps** shows what was found and where each app keeps its MCP configuration. You can still install into an app Kumi didn't detect; it creates the config file.
 

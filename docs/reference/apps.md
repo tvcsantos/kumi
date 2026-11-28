@@ -1,6 +1,6 @@
 # Supported apps
 
-Kumi writes MCP servers into twelve apps. This page lists, for each one, where its config lives, its format, and an example of what Kumi writes.
+Kumi writes MCP servers into thirteen apps. This page lists, for each one, where its config lives, its format, and an example of what Kumi writes.
 
 The examples install [Context7](https://context7.com) two ways: as a local npm package with an API key, and as a hosted server with an `Authorization` header.
 
@@ -20,6 +20,7 @@ The examples install [Context7](https://context7.com) two ways: as a local npm p
 | [Air in JetBrains IDEs](#air-in-jetbrains-ides) | global | JSON | `mcpServers` |
 | [Zed](#zed) | global, project | JSONC | `context_servers` |
 | [Cline](#cline) | global | JSON | `mcpServers` |
+| [Hermes Agent](#hermes-agent) | global | YAML | `mcp_servers` |
 
 ## Transports
 
@@ -37,6 +38,7 @@ The examples install [Context7](https://context7.com) two ways: as a local npm p
 | Air in JetBrains IDEs | ✅ | ✅ | via `mcp-remote` |
 | Zed | ✅ | ✅ | via `mcp-remote` |
 | Cline | ✅ | ✅ | ✅ |
+| Hermes Agent | ✅ | ✅ | ✅ |
 
 **via `mcp-remote`** means the app can't connect to that kind of server from its config file, so Kumi runs [`mcp-remote`](https://www.npmjs.com/package/mcp-remote), a stdio bridge, in its place. Headers are passed through environment variables named `MCP_HEADER_<NAME>`, which `mcp-remote` expands itself, so values with spaces need no quoting. The bridge needs Node.js.
 
@@ -478,9 +480,41 @@ Zed picks up the change without a restart; check **Settings | AI | MCP Servers**
 
 :::
 
+## Hermes Agent
+
+| | |
+|---|---|
+| **Global** | `~/.hermes/config.yaml` (`%LOCALAPPDATA%\hermes\config.yaml` on Windows), or `$HERMES_HOME/config.yaml` |
+| **Detected by** | `hermes` on `PATH`, or the Hermes home folder |
+
+Nous Research's Hermes Agent keeps its MCP servers under `mcp_servers` in its YAML config, next to all its other settings. Kumi edits only the lines of the server's own entry and leaves the rest of the file byte for byte. It refuses to edit a file where `mcp_servers` is written as an inline `{ … }` mapping. Hermes has no project-level MCP file. Kumi writes the default profile's config. For a named profile, point `HERMES_HOME` at that profile's folder.
+
+An entry with a `command` runs locally and one with a `url` connects over Streamable HTTP. SSE servers get `transport: sse`. Kumi doesn't wrap `npx` on Windows, because Hermes finds `npx.cmd` itself. The gateway picks up changes on its own; in a running `hermes` session, use `/reload-mcp`. Hermes-only fields such as `tools`, `enabled` or `auth: oauth` aren't managed by Kumi, and reinstalling a server from Kumi replaces its whole entry.
+
+::: code-group
+
+```yaml [Local package]
+mcp_servers:
+  context7:
+    command: "npx"
+    args: ["-y", "@upstash/context7-mcp@4.4.4"]
+    env:
+      CONTEXT7_API_KEY: "…"
+```
+
+```yaml [Hosted]
+mcp_servers:
+  context7:
+    url: "https://mcp.context7.com/mcp"
+    headers:
+      Authorization: "Bearer …"
+```
+
+:::
+
 ## Windows
 
-On Windows, `npx`, `npm`, `pnpm`, `pnpx`, `yarn` and `bunx` are `.cmd` shims that most apps can't start directly, so Kumi wraps them:
+On Windows, `npx`, `npm`, `pnpm`, `pnpx`, `yarn` and `bunx` are `.cmd` shims that most apps can't start directly, so Kumi wraps them (except for Hermes Agent, which resolves them itself):
 
 ```json
 {

@@ -20,6 +20,7 @@ A desktop MCP marketplace. Browse MCP servers from the official [MCP Registry](h
 | Air in JetBrains IDEs | global | `~/.jetbrains/mcp/mcp.json` (SSE servers via `mcp-remote`) |
 | Zed | global, project (`.zed/settings.json`) | `~/.config/zed/settings.json` (JSONC, `context_servers`; SSE servers via `mcp-remote`) |
 | Cline | global | `~/.cline/data/settings/cline_mcp_settings.json` (CLI and VS Code extension; honors `CLINE_MCP_SETTINGS_PATH`, `CLINE_DATA_DIR`, `CLINE_DIR`) |
+| Hermes Agent | global | `~/.hermes/config.yaml` (YAML, `mcp_servers`; honors `HERMES_HOME`) |
 
 ## Showcase
 

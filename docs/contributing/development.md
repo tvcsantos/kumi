@@ -42,7 +42,7 @@ Every path Kumi uses comes from `HOME`, the variables above, and `KUMI_DATA_DIR`
 
 ```
 src/shared/      types, registry schema, variant → ServerSpec resolution (used by both processes)
-src/main/        Electron main: app adapters, config I/O (JSON/JSONC/TOML), install planner,
+src/main/        Electron main: app adapters, config I/O (JSON/JSONC/TOML/YAML), install planner,
                  registry clients (API and static file), backups, state, health check, IPC
 src/preload/     the narrow `window.kumi` bridge
 src/renderer/    React UI
@@ -59,7 +59,7 @@ Tests live in `tests/` and run in Node, without Electron:
 | Suite | Covers |
 |---|---|
 | `adapters.test.ts` | Every app adapter: round-trips, bridging, Windows wrapping, and golden tests against fixture configs. |
-| `config-io.test.ts` | Format-preserving JSON/JSONC/TOML edits, atomic writes. |
+| `config-io.test.ts` | Format-preserving JSON/JSONC/TOML/YAML edits, atomic writes. |
 | `install-service.test.ts` | Plan, apply, uninstall and backups on a temporary home, including a file changing between plan and apply. |
 | `catalog.test.ts` | Registry clients, merged search, registry storage and headers. |
 | `variants.test.ts` | `server.json` → form fields → `ServerSpec`. |

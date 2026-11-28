@@ -14,7 +14,7 @@
 │  │   └─ HttpCache     retries + disk cache, shared by all         │
 │  ├─ RegistryStore    registries.json, encrypted header secrets    │
 │  ├─ Adapters         one per app: paths, format, render, parse    │
-│  ├─ config-io        JSON/JSONC/TOML edits, atomic write, diff    │
+│  ├─ config-io        JSON/TOML/YAML edits, atomic write, diff     │
 │  ├─ InstallService   plan → preview → apply, ownership, uninstall │
 │  ├─ BackupService    copies before every write, restore           │
 │  ├─ StateStore       state.json: what Kumi installed, where       │
@@ -74,7 +74,7 @@ Most apps use a JSON object with a map of servers, so `createJsonAdapter` in `co
 - **Windows** (`windowsWrap`): `npx` and other `.cmd` shims become `cmd /c npx …`.
 - **The guard** (`assertOnlyServerChanged`): the parsed file before and after must be equal once the server entry is removed from both. Otherwise the edit is refused.
 
-Codex (TOML) has its own adapter with the same guard.
+Codex (TOML) and Hermes Agent (YAML) have their own adapters with the same guard.
 
 ## Install flow
 
