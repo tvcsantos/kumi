@@ -95,7 +95,8 @@ describe('BundleStore.prepare', () => {
     await expect(store.prepare('http://example.com/x.mcpb', 'a'.repeat(64))).rejects.toThrow(/HTTPS/);
   });
 
-  it('makes a binary bundle executable', async () => {
+  // Windows has no executable bit: chmod changes nothing and the mode never has 0o111.
+  it.skipIf(process.platform === 'win32')('makes a binary bundle executable', async () => {
     const m = { ...manifest, server: { type: 'binary', entry_point: 'bin/server', mcp_config: { command: '${__dirname}/bin/server' } } };
     const data = zip({ 'manifest.json': strToU8(JSON.stringify(m)), bin: { server: strToU8('#!/bin/sh\n') } });
     served.set(URL_A, data);
