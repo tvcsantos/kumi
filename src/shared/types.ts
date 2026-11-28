@@ -3,7 +3,7 @@
 import type { PackageRegistry } from './package-registry';
 import type { PrivateNetwork } from './private-network';
 
-export const CLIENT_IDS = ['claude-desktop', 'claude-code', 'vscode', 'cursor', 'codex', 'copilot-cli', 'opencode', 'pi', 'junie', 'jetbrains-air', 'zed', 'cline'] as const;
+export const CLIENT_IDS = ['claude-desktop', 'claude-code', 'vscode', 'cursor', 'codex', 'copilot-cli', 'opencode', 'pi', 'junie', 'jetbrains-air', 'zed', 'cline', 'hermes'] as const;
 export type ClientId = (typeof CLIENT_IDS)[number];
 
 export type ScopeKind = 'user' | 'project' | 'local';

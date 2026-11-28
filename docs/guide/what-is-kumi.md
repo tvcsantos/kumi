@@ -8,7 +8,7 @@ Kumi is a desktop app for finding [MCP](https://modelcontextprotocol.io) servers
 
 Every AI app reads MCP servers from its own config file, and no two agree on the details:
 
-- Claude Desktop, Claude Code, Cursor, Copilot CLI and Pi use `mcpServers`, VS Code uses `servers`, OpenCode uses `mcp.servers`, and Codex uses a TOML table, `[mcp_servers.<name>]`.
+- Claude Desktop, Claude Code, Cursor, Copilot CLI and Pi use `mcpServers`, VS Code uses `servers`, OpenCode uses `mcp.servers`, Codex uses a TOML table, `[mcp_servers.<name>]`, and Hermes Agent uses YAML.
 - Some need a `type` field and some don't. Some can reach remote servers directly and some can't.
 - Files live in different places on macOS, Windows and Linux, and some apps also have project-level files.
 - Many of these files hold other settings you tuned by hand, and a careless edit can break them.
@@ -42,6 +42,7 @@ Setting up one server in four apps means four different edits. Kumi does them fo
 | OpenCode | global, project |
 | Pi | global, project |
 | Cline | global |
+| Hermes Agent | global |
 
 The [Supported apps](../reference/apps) reference lists each app's config file, format and transports, with an example of what Kumi writes.
 

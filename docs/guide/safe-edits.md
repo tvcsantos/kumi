@@ -8,6 +8,7 @@ Kumi never regenerates a file. It parses it, changes the one server entry, and w
 
 - **JSON and JSONC** (Claude, VS Code, Cursor, Copilot CLI, OpenCode, Pi) are edited in place with [`jsonc-parser`](https://github.com/microsoft/node-jsonc-parser). Comments, key order and unrelated settings are kept. Lines right next to the edit may be reformatted.
 - **TOML** (Codex) is edited by section. Kumi owns the whole `[mcp_servers.<name>]` table and leaves the rest of the file byte for byte.
+- **YAML** (Hermes Agent) is edited by lines. Kumi owns the lines of the `mcp_servers.<name>` entry and leaves the rest of the file byte for byte. It refuses files where `mcp_servers` is an inline `{ … }` mapping rather than rewrite them.
 
 After computing an edit, Kumi parses the file before and after and compares everything except the server entry. If anything else would change, it refuses to write:
 

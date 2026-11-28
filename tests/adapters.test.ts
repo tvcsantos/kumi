@@ -5,6 +5,7 @@ import type { ServerSpec } from '@shared/types';
 import { ADAPTERS, getAdapter } from '../src/main/clients';
 import { parseJson } from '../src/main/config-io/json';
 import { parseToml } from '../src/main/config-io/toml';
+import { parseYaml } from '../src/main/config-io/yaml';
 
 const fixture = (name: string) => readFileSync(join(__dirname, 'fixtures/configs', name), 'utf8');
 const mac = { secretsMode: 'inline', platform: 'darwin' } as const;
@@ -47,7 +48,8 @@ describe.each(ADAPTERS.map((a) => [a.id, a] as const))('%s adapter', (_id, adapt
     }
   });
 
-  it('wraps npx with cmd /c on Windows', () => {
+  // Hermes resolves npx through PATHEXT itself, so it keeps the plain command (see its own test).
+  it.skipIf(adapter.id === 'hermes')('wraps npx with cmd /c on Windows', () => {
     const { text } = adapter.upsert('', stdio, user, { ...mac, platform: 'win32' });
     expect(adapter.readServers(text, user).context7).toMatchObject({ command: 'cmd', args: ['/c', 'npx', ...stdio.args!] });
   });
@@ -319,5 +321,66 @@ describe('cline', () => {
     expect(adapter.configPath({ home: '/h', vars: { CLINE_DIR: '/c', CLINE_DATA_DIR: '/d' } } as never, user)).toBe(join('/d', 'settings', file));
     expect(adapter.configPath({ home: '/h', vars: { CLINE_DATA_DIR: '/d', CLINE_MCP_SETTINGS_PATH: '/m.json' } } as never, user)).toBe('/m.json');
     expect(adapter.scopes).toEqual(['user']);
+  });
+});
+
+describe('hermes', () => {
+  const adapter = getAdapter('hermes');
+  const env = (vars: Record<string, string> = {}, platform: NodeJS.Platform = 'darwin') =>
+    ({ home: '/h', platform, localAppData: 'C:\\Users\\me\\AppData\\Local', vars }) as never;
+
+  it('appends to mcp_servers and leaves the rest of the file byte-identical', () => {
+    const before = fixture('hermes.yaml');
+    const { text } = adapter.upsert(before, stdio, user, mac);
+    const inserted = '    auth: oauth\n  context7:\n    command: "npx"\n    args: ["-y", "@upstash/context7-mcp@1.0.0"]\n    env:\n      CONTEXT7_API_KEY: "sk-1"\n';
+    expect(text).toBe(before.replace('    auth: oauth\n', inserted));
+    expect(Object.keys(adapter.readServers(text, user))).toEqual(['github', 'linear', 'context7']);
+    expect(adapter.remove(text, 'context7', user)).toBe(before);
+  });
+
+  it('replaces an existing server in place, keeping the comment above the next one', () => {
+    const before = fixture('hermes.yaml');
+    const { text } = adapter.upsert(before, { ...remote, name: 'github' }, user, mac);
+    expect(text).toContain('mcp_servers:\n  github:\n    url: "https://example.com/mcp"\n    headers:\n      Authorization: "Bearer t"\n\n  # Hosted\n  linear:');
+    expect(text).not.toContain('rotate monthly');
+    expect(parseYaml(text).terminal).toEqual({ backend: 'local' });
+  });
+
+  it('removes a server and the blank line before it', () => {
+    const before = fixture('hermes.yaml');
+    const text = adapter.remove(before, 'linear', user);
+    expect(text).toContain('      include: [list_issues, create_issue]\n\n# Terminal backend');
+    expect(Object.keys(adapter.readServers(text, user))).toEqual(['github']);
+  });
+
+  it('writes legacy SSE servers natively with transport: sse', () => {
+    const { text, warnings } = adapter.upsert('model: x\n', { ...remote, transport: 'sse', headers: undefined }, user, mac);
+    expect(warnings).toEqual([]);
+    expect(text).toBe('model: x\n\nmcp_servers:\n  remote:\n    url: "https://example.com/mcp"\n    transport: "sse"\n');
+    expect(adapter.readServers(text, user).remote).toEqual({ name: 'remote', transport: 'sse', url: 'https://example.com/mcp' });
+  });
+
+  it('drops mcp_servers once its last server is removed', () => {
+    const { text } = adapter.upsert('model: x\n', stdio, user, mac);
+    expect(adapter.remove(text, 'context7', user)).toBe('model: x\n');
+  });
+
+  it('keeps npx as is on Windows', () => {
+    const { text } = adapter.upsert('', stdio, user, { ...mac, platform: 'win32' });
+    expect(adapter.readServers(text, user).context7).toMatchObject({ command: 'npx', args: stdio.args });
+  });
+
+  it('keeps CRLF line endings', () => {
+    const before = fixture('hermes.yaml').replace(/\n/g, '\r\n');
+    const { text } = adapter.upsert(before, stdio, user, mac);
+    expect(text.replace(/\r\n/g, '')).not.toContain('\n');
+    expect(adapter.remove(text, 'context7', user)).toBe(before);
+  });
+
+  it('uses ~/.hermes, %LOCALAPPDATA%\\hermes on Windows, or $HERMES_HOME', () => {
+    expect(adapter.configPath(env(), user)).toBe(join('/h', '.hermes', 'config.yaml'));
+    expect(adapter.configPath(env({}, 'win32'), user)).toBe(join('C:\\Users\\me\\AppData\\Local', 'hermes', 'config.yaml'));
+    expect(adapter.configPath(env({ HERMES_HOME: '/srv/hermes' }), user)).toBe(join('/srv/hermes', 'config.yaml'));
+    expect(adapter.configPath(env({ HERMES_HOME: '~/alt' }), user)).toBe(join('/h/alt', 'config.yaml'));
   });
 });

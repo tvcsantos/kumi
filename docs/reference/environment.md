@@ -18,8 +18,9 @@ Some apps let you move their config with an environment variable. Kumi follows t
 | `CLINE_MCP_SETTINGS_PATH` | Cline | The MCP settings file itself, instead of `~/.cline/data/settings/cline_mcp_settings.json`. |
 | `CLINE_DATA_DIR` | Cline | Replaces `~/.cline/data`. |
 | `CLINE_DIR` | Cline | Replaces `~/.cline`. |
+| `HERMES_HOME` | Hermes Agent | Config is `$HERMES_HOME/config.yaml` instead of `~/.hermes/config.yaml`. |
 | `PI_CODING_AGENT_DIR` | Pi | Global config is `$PI_CODING_AGENT_DIR/mcp.json` instead of `~/.pi/agent/mcp.json`. |
-| `APPDATA`, `LOCALAPPDATA` | Windows | Where Claude Desktop and VS Code keep their config, and where Claude Desktop is detected. |
+| `APPDATA`, `LOCALAPPDATA` | Windows | Where Claude Desktop, VS Code and Hermes Agent keep their config, and where Claude Desktop is detected. |
 
 ## Your login shell
 
@@ -28,7 +29,7 @@ Apps opened from the Dock, Finder or a desktop launcher on macOS and Linux start
 So at startup Kumi asks your login shell (`$SHELL -ilc`, falling back to `/bin/zsh`) for:
 
 - `PATH`, merged with the one Kumi started with, to find `npx`, `uvx`, `docker`, `dnx` and the app commands it uses for detection;
-- `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `CLINE_DIR`, `CLINE_DATA_DIR`, `CLINE_MCP_SETTINGS_PATH` and `XDG_CONFIG_HOME`, if Kumi didn't already have them;
+- `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `HERMES_HOME`, `CLINE_DIR`, `CLINE_DATA_DIR`, `CLINE_MCP_SETTINGS_PATH` and `XDG_CONFIG_HOME`, if Kumi didn't already have them;
 - the [certificate variables](#certificates) below, if Kumi didn't already have them.
 
 This takes at most five seconds, and the window opens while it runs. On Windows, GUI apps already see the user's environment, so this step is skipped.

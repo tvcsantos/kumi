@@ -55,7 +55,7 @@ export const acmeCli = createJsonAdapter({
 });
 ```
 
-If the app's entry shape differs from the common one, pass your own `render` and `parse` (see `opencode.ts`, where the command is a single array). For extra edits next to the entry, like VS Code's `inputs`, use `afterUpsert`, `afterRemove` and `ignoreInDiff` (see `vscode.ts`). For a non-JSON format, implement `ClientAdapter` directly (see `codex.ts`).
+If the app's entry shape differs from the common one, pass your own `render` and `parse` (see `opencode.ts`, where the command is a single array). For extra edits next to the entry, like VS Code's `inputs`, use `afterUpsert`, `afterRemove` and `ignoreInDiff` (see `vscode.ts`). For a non-JSON format, implement `ClientAdapter` directly (see `codex.ts` for TOML and `hermes.ts` for YAML).
 
 Register it in `src/main/clients/index.ts`:
 
